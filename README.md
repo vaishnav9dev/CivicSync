@@ -7,7 +7,7 @@ CivicSync is a civic technology web application designed to help improve the coo
 By bringing project information and scheduling considerations into one interface, CivicSync aims to support more efficient, transparent, and coordinated infrastructure planning.
 
 ## 🌐 Project Links
-- **Demo Video :**https://drive.google.com/drive/folders/1TU8d9hfM8Gnza-BzYbWFTytJC52gl1Ko?usp=drive_link
+- **Demo Video :** https://drive.google.com/drive/folders/1TU8d9hfM8Gnza-BzYbWFTytJC52gl1Ko?usp=drive_link
 - **Live Demo (Production):** https://civicsync-gold.vercel.app/
 - **Additional Deployment:** https://civicsync-2a786kjah-vaishnav9dev.vercel.app/
 - **GitHub Repository:** https://github.com/vaishnav9dev/CivicSync
