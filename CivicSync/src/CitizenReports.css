@@ -1,4 +1,3 @@
-
 .citizen-reports {
   margin: 20px 0;
   color: #173757;
@@ -156,6 +155,11 @@
   background: #1762a4;
 }
 
+.cr-submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .cr-message {
   color: #14785a;
   background: #e6f8f0;
@@ -247,6 +251,7 @@
   color: #54718b;
   font-size: 10px;
   margin: 0 0 8px;
+  overflow-wrap: anywhere;
 }
 
 .cr-report-description {
@@ -300,6 +305,66 @@
   color: #8292a3;
 }
 
+/* GPS and manual location selection */
+.cr-location-tools {
+  margin-top: 12px;
+}
+
+.cr-location-tools p,
+.cr-coordinate-status {
+  color: #71849a;
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 7px 0;
+}
+
+.cr-location-button {
+  width: 100%;
+  border: 1px solid #b9d6e8;
+  border-radius: 6px;
+  padding: 10px;
+  background: #eef8ff;
+  color: #124a78;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cr-location-button:hover {
+  background: #deeffb;
+}
+
+.cr-location-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.cr-location-map {
+  width: 100%;
+  height: 240px;
+  margin-top: 8px;
+  border: 1px solid #dce5ee;
+  border-radius: 8px;
+  z-index: 0;
+}
+
+.cr-coordinate-status {
+  overflow-wrap: anywhere;
+}
+
+.cr-location-link {
+  display: inline-block;
+  margin: 0 0 8px;
+  color: #1762a4;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.cr-location-link:hover {
+  color: #103f77;
+}
+
 @media (max-width: 900px) {
   .cr-layout {
     grid-template-columns: 1fr;
@@ -327,5 +392,9 @@
   .cr-filters select {
     width: 100%;
     max-width: none;
+  }
+
+  .cr-location-map {
+    height: 220px;
   }
 }

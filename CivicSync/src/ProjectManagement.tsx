@@ -1,5 +1,6 @@
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import { supabase } from './lib/supabase'
 import './ProjectManagement.css'
 
@@ -55,8 +56,8 @@ function toForm(project: ProjectRecord): ProjectForm {
     endDate: project.endDate,
     status: project.status,
     category: project.category,
-    budget: String(project.budget),
-    description: project.description,
+    budget: String(project.budget ?? 0),
+    description: project.description ?? '',
   }
 }
 
@@ -73,6 +74,8 @@ export default function ProjectManagement({
   loading,
   onProjectsChanged,
 }: ProjectManagementProps) {
+  const formRef = useRef<HTMLFormElement>(null)
+
   const [form, setForm] = useState<ProjectForm>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -94,11 +97,28 @@ export default function ProjectManagement({
     setMessage('')
   }
 
-  async function verifyAdministrator(): Promise<boolean> {
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.getSession()
+  function startEditing(project: ProjectRecord) {
+    setEditingId(project.id)
+    setForm(toForm(project))
+    setMessage(`Editing project: ${project.name}`)
+    setMessageType('success')
 
-    if (sessionError || !sessionData.session) {
+    // Bring the edit form into view so the user sees the change.
+    window.setTimeout(() => {
+      formRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 0)
+  }
+
+  async function verifyAdministrator(): Promise<boolean> {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    if (sessionError || !session) {
       setMessage(
         'Please sign in with your administrator account through Citizen Reports first.',
       )
@@ -119,7 +139,7 @@ export default function ProjectManagement({
     return true
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setMessage('')
 
@@ -129,8 +149,14 @@ export default function ProjectManagement({
       return
     }
 
-    if (!form.startDate || !form.endDate || form.endDate < form.startDate) {
-      setMessage('Choose valid dates. The end date must not precede the start date.')
+    if (
+      !form.startDate ||
+      !form.endDate ||
+      form.endDate < form.startDate
+    ) {
+      setMessage(
+        'Choose valid dates. The end date must not precede the start date.',
+      )
       setMessageType('error')
       return
     }
@@ -267,11 +293,24 @@ export default function ProjectManagement({
           <h3>Manage Infrastructure Projects</h3>
           <p>Create, edit, or remove projects in the shared database.</p>
         </div>
-        <span className="environment-tag">{projects.length} PROJECTS</span>
+        <span className="environment-tag">
+          {projects.length} PROJECTS
+        </span>
       </div>
 
-      <form className="pm-form" onSubmit={handleSubmit}>
+      <form
+        ref={formRef}
+        className="pm-form"
+        onSubmit={handleSubmit}
+      >
         <h4>{editingId ? 'Edit project' : 'Add a project'}</h4>
+
+        {editingId && (
+          <p className="pm-editing-notice">
+            You are editing an existing project. Change the fields below
+            and click Save Changes.
+          </p>
+        )}
 
         <div className="pm-form-grid">
           <label>
@@ -453,12 +492,8 @@ export default function ProjectManagement({
                 <button
                   type="button"
                   className="secondary-button"
-                  disabled={busy}
-                  onClick={() => {
-                    setEditingId(project.id)
-                    setForm(toForm(project))
-                    setMessage('')
-                  }}
+                  disabled={busy || loading}
+                  onClick={() => startEditing(project)}
                 >
                   Edit
                 </button>
@@ -466,7 +501,7 @@ export default function ProjectManagement({
                 <button
                   type="button"
                   className="pm-delete-button"
-                  disabled={busy}
+                  disabled={busy || loading}
                   onClick={() => void deleteProject(project)}
                 >
                   Delete

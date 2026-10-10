@@ -1,5 +1,13 @@
-
 import { useEffect, useState, type FormEvent } from 'react'
+import {
+  CircleMarker,
+  MapContainer,
+  TileLayer,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet'
+import type { LeafletMouseEvent } from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import './CitizenReports.css'
@@ -16,6 +24,8 @@ type CitizenReport = {
   description: string
   status: ReportStatus
   createdAt: string
+  latitude: number | null
+  longitude: number | null
 }
 
 type DatabaseReport = {
@@ -27,6 +37,8 @@ type DatabaseReport = {
   location: string
   status: string
   created_at: string
+  latitude?: number | null
+  longitude?: number | null
 }
 
 function mapDatabaseReport(row: DatabaseReport): CitizenReport {
@@ -50,13 +62,93 @@ function mapDatabaseReport(row: DatabaseReport): CitizenReport {
       ? (row.status as ReportStatus)
       : 'Submitted',
     createdAt: new Date(row.created_at).toISOString().slice(0, 10),
+    latitude: typeof row.latitude === 'number' ? row.latitude : null,
+    longitude: typeof row.longitude === 'number' ? row.longitude : null,
   }
+}
+
+// Initial map view only; this is NOT a claimed problem location.
+const DEFAULT_MAP_CENTER: [number, number] = [12.8406, 80.1534]
+
+type LocationPickerProps = {
+  position: [number, number] | null
+  onPick: (latitude: number, longitude: number) => void
+}
+
+function MapClickHandler({
+  onPick,
+}: {
+  onPick: LocationPickerProps['onPick']
+}) {
+  useMapEvents({
+    click(event: LeafletMouseEvent) {
+      onPick(event.latlng.lat, event.latlng.lng)
+    },
+  })
+
+  return null
+}
+
+function SelectedLocationView({
+  position,
+}: {
+  position: [number, number] | null
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (position) {
+      map.flyTo(position, Math.max(map.getZoom(), 16), {
+        duration: 0.4,
+      })
+    }
+  }, [map, position])
+
+  if (!position) return null
+
+  return (
+    <CircleMarker
+      center={position}
+      radius={9}
+      pathOptions={{
+        color: '#ffffff',
+        weight: 3,
+        fillColor: '#e34d59',
+        fillOpacity: 1,
+      }}
+    />
+  )
+}
+
+function LocationPickerMap({
+  position,
+  onPick,
+}: LocationPickerProps) {
+  return (
+    <MapContainer
+      className="cr-location-map"
+      center={position ?? DEFAULT_MAP_CENTER}
+      zoom={position ? 16 : 12}
+      scrollWheelZoom
+    >
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+
+      <MapClickHandler onPick={onPick} />
+      <SelectedLocationView position={position} />
+    </MapContainer>
+  )
 }
 
 export default function CitizenReports() {
   const [reports, setReports] = useState<CitizenReport[]>([])
   const [issue, setIssue] = useState('Road Damage')
   const [location, setLocation] = useState('')
+  const [coordinates, setCoordinates] =
+    useState<[number, number] | null>(null)
+  const [locating, setLocating] = useState(false)
   const [priority, setPriority] = useState<Priority>('Medium')
   const [description, setDescription] = useState('')
   const [search, setSearch] = useState('')
@@ -104,7 +196,7 @@ export default function CitizenReports() {
     }
   }, [])
 
-  // Determine the admin role from the protected database function.
+  // Determine administrator role using the protected database function.
   useEffect(() => {
     let active = true
 
@@ -126,9 +218,13 @@ export default function CitizenReports() {
       setCheckingAdmin(false)
 
       if (error) {
-        setMessage(`Unable to verify administrator access: ${error.message}`)
+        setMessage(
+          `Unable to verify administrator access: ${error.message}`,
+        )
       } else if (data !== true) {
-        setMessage('Signed in, but this account does not have administrator access.')
+        setMessage(
+          'Signed in, but this account does not have administrator access.',
+        )
       }
     }
 
@@ -139,7 +235,7 @@ export default function CitizenReports() {
     }
   }, [user])
 
-  // Load shared reports from Supabase.
+  // Load reports, including coordinates, from Supabase.
   useEffect(() => {
     let active = true
 
@@ -149,7 +245,7 @@ export default function CitizenReports() {
       const { data, error } = await supabase
         .from('citizen_reports')
         .select(
-          'id, title, description, category, priority, location, status, created_at',
+          'id, title, description, category, priority, location, status, created_at, latitude, longitude',
         )
         .order('created_at', { ascending: false })
 
@@ -158,9 +254,11 @@ export default function CitizenReports() {
       if (error) {
         setMessage(`Unable to load reports: ${error.message}`)
       } else {
-        setReports((data ?? []).map((row) =>
-          mapDatabaseReport(row as DatabaseReport),
-        ))
+        setReports(
+          (data ?? []).map((row) =>
+            mapDatabaseReport(row as DatabaseReport),
+          ),
+        )
       }
 
       setLoading(false)
@@ -211,6 +309,70 @@ export default function CitizenReports() {
     setMessage('You have signed out.')
   }
 
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setMessage(
+        'GPS is unavailable in this browser. Click the map to choose the problem location.',
+      )
+      return
+    }
+
+    setLocating(true)
+    setMessage('Requesting location permission...')
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const point: [number, number] = [
+          position.coords.latitude,
+          position.coords.longitude,
+        ]
+
+        setCoordinates(point)
+
+        setLocation(
+          (current) =>
+            current.trim() ||
+            `GPS location (${point[0].toFixed(5)}, ${point[1].toFixed(5)})`,
+        )
+
+        setLocating(false)
+        setMessage(
+          `Location selected: ${point[0].toFixed(6)}, ${point[1].toFixed(6)}. Click the map to adjust it if the problem is elsewhere.`,
+        )
+      },
+      (error) => {
+        const reason =
+          error.code === error.PERMISSION_DENIED
+            ? 'Location permission was denied.'
+            : error.code === error.POSITION_UNAVAILABLE
+              ? 'Your location is unavailable.'
+              : 'Location request timed out.'
+
+        setMessage(
+          `${reason} You can still click the map to choose the problem location.`,
+        )
+        setLocating(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0,
+      },
+    )
+  }
+
+  function selectMapLocation(latitude: number, longitude: number) {
+    setCoordinates([latitude, longitude])
+    setLocation(
+      (current) =>
+        current.trim() ||
+        `Selected map point (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`,
+    )
+    setMessage(
+      `Problem location selected: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}.`,
+    )
+  }
+
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -219,6 +381,13 @@ export default function CitizenReports() {
 
     if (!cleanLocation || !cleanDescription) {
       setMessage('Please enter a location and description.')
+      return
+    }
+
+    if (!coordinates) {
+      setMessage(
+        'Please use GPS or click the map to select the exact problem location before submitting.',
+      )
       return
     }
 
@@ -233,10 +402,12 @@ export default function CitizenReports() {
         category: issue,
         priority,
         location: cleanLocation,
+        latitude: coordinates[0],
+        longitude: coordinates[1],
         status: 'Submitted',
       })
       .select(
-        'id, title, description, category, priority, location, status, created_at',
+        'id, title, description, category, priority, location, status, created_at, latitude, longitude',
       )
       .single()
 
@@ -252,6 +423,7 @@ export default function CitizenReports() {
     setReports((current) => [newReport, ...current])
     setIssue('Road Damage')
     setLocation('')
+    setCoordinates(null)
     setPriority('Medium')
     setDescription('')
     setSearch('')
@@ -261,11 +433,12 @@ export default function CitizenReports() {
 
   async function updateStatus(dbId: string, status: ReportStatus) {
     if (!user || !isAdmin) {
-      setMessage('Only an authenticated administrator can update statuses.')
+      setMessage(
+        'Only an authenticated administrator can update statuses.',
+      )
       return
     }
 
-    const previousReports = reports
     const report = reports.find((item) => item.dbId === dbId)
 
     if (!report || report.status === status) return
@@ -285,9 +458,11 @@ export default function CitizenReports() {
       return
     }
 
-    setReports(previousReports.map((item) =>
-      item.dbId === dbId ? { ...item, status } : item,
-    ))
+    setReports((current) =>
+      current.map((item) =>
+        item.dbId === dbId ? { ...item, status } : item,
+      ),
+    )
 
     setMessage(`Report ${report.id} updated to ${status}.`)
   }
@@ -324,6 +499,7 @@ export default function CitizenReports() {
             Report infrastructure problems and track their progress.
           </p>
         </div>
+
         <span className="cr-demo-tag">
           {isAdmin ? 'ADMINISTRATOR' : 'PROTOTYPE'}
         </span>
@@ -460,6 +636,33 @@ export default function CitizenReports() {
             required
           />
 
+          <div className="cr-location-tools">
+            <button
+              className="cr-location-button"
+              type="button"
+              onClick={useCurrentLocation}
+              disabled={locating}
+            >
+              {locating ? 'Getting GPS location…' : '◎ Use my GPS location'}
+            </button>
+
+            <p>
+              Or click directly on the map to mark where the problem is.
+              GPS marks your device location, not necessarily the problem.
+            </p>
+          </div>
+
+          <LocationPickerMap
+            position={coordinates}
+            onPick={selectMapLocation}
+          />
+
+          <p className="cr-coordinate-status" aria-live="polite">
+            {coordinates
+              ? `Selected coordinates: ${coordinates[0].toFixed(6)}, ${coordinates[1].toFixed(6)}`
+              : 'No coordinates selected yet. Choose GPS or click the map.'}
+          </p>
+
           <label htmlFor="cr-priority">Priority</label>
           <select
             id="cr-priority"
@@ -491,15 +694,14 @@ export default function CitizenReports() {
           <button
             className="cr-submit"
             type="submit"
-            disabled={submitting || loading}
+            disabled={submitting || loading || locating}
           >
             {submitting ? 'Submitting...' : '+ Submit Report'}
           </button>
 
           <p className="cr-disclaimer">
-            Prototype only. Reports are stored in the shared database and
-            may be visible to other users. Do not enter sensitive personal
-            information.
+            Reports are stored in the shared database and may be visible to
+            other users. Do not enter sensitive personal information.
           </p>
         </form>
 
@@ -556,7 +758,22 @@ export default function CitizenReports() {
 
                 <h4>{report.issue}</h4>
                 <p className="cr-report-location">⌖ {report.location}</p>
-                <p className="cr-report-description">{report.description}</p>
+
+                {report.latitude !== null &&
+                  report.longitude !== null && (
+                    <a
+                      className="cr-location-link"
+                      href={`https://www.openstreetmap.org/?mlat=${report.latitude}&mlon=${report.longitude}#map=18/${report.latitude}/${report.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View exact reported location ↗
+                    </a>
+                  )}
+
+                <p className="cr-report-description">
+                  {report.description}
+                </p>
 
                 <div className="cr-report-bottom">
                   <span
@@ -571,13 +788,19 @@ export default function CitizenReports() {
                   className="cr-status-label"
                   htmlFor={`status-${report.dbId}`}
                 >
-                  {isAdmin ? 'Update status' : 'Status (administrator access required)'}
+                  {isAdmin
+                    ? 'Update status'
+                    : 'Status (administrator access required)'}
                 </label>
 
                 <select
                   id={`status-${report.dbId}`}
                   value={report.status}
-                  disabled={!isAdmin || checkingAdmin || updatingId === report.dbId}
+                  disabled={
+                    !isAdmin ||
+                    checkingAdmin ||
+                    updatingId === report.dbId
+                  }
                   onChange={(event) =>
                     void updateStatus(
                       report.dbId,
