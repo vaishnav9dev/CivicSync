@@ -1,11 +1,14 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
+import type { User } from '@supabase/supabase-js'
+import { supabase } from './lib/supabase'
 import './CitizenReports.css'
 
 type ReportStatus = 'Submitted' | 'Under Review' | 'Resolved'
 type Priority = 'Low' | 'Medium' | 'High'
 
 type CitizenReport = {
+  dbId: string
   id: string
   issue: string
   location: string
@@ -15,49 +18,43 @@ type CitizenReport = {
   createdAt: string
 }
 
-const STORAGE_KEY = 'civicsync-citizen-reports'
+type DatabaseReport = {
+  id: string
+  title: string
+  description: string
+  category: string
+  priority: string
+  location: string
+  status: string
+  created_at: string
+}
 
-const initialReports: CitizenReport[] = [
-  {
-    id: 'CIV-DEMO-001',
-    issue: 'Road Damage',
-    location: 'Main Road',
-    priority: 'High',
-    description: 'Sample report demonstrating a road damage complaint.',
-    status: 'Under Review',
-    createdAt: '2026-10-09',
-  },
-  {
-    id: 'CIV-DEMO-002',
-    issue: 'Drainage Blockage',
-    location: 'Market Street',
-    priority: 'Medium',
-    description: 'Sample report demonstrating a drainage complaint.',
-    status: 'Submitted',
-    createdAt: '2026-10-09',
-  },
-]
+function mapDatabaseReport(row: DatabaseReport): CitizenReport {
+  const validPriorities: Priority[] = ['Low', 'Medium', 'High']
+  const validStatuses: ReportStatus[] = [
+    'Submitted',
+    'Under Review',
+    'Resolved',
+  ]
 
-function readReports(): CitizenReport[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-
-    if (saved !== null) {
-      const parsed: unknown = JSON.parse(saved)
-
-      if (Array.isArray(parsed)) {
-        return parsed as CitizenReport[]
-      }
-    }
-  } catch {
-    // Fall back to the initial demo reports.
+  return {
+    dbId: row.id,
+    id: `CIV-${row.id.slice(-8).toUpperCase()}`,
+    issue: row.category || row.title,
+    location: row.location,
+    priority: validPriorities.includes(row.priority as Priority)
+      ? (row.priority as Priority)
+      : 'Medium',
+    description: row.description,
+    status: validStatuses.includes(row.status as ReportStatus)
+      ? (row.status as ReportStatus)
+      : 'Submitted',
+    createdAt: new Date(row.created_at).toISOString().slice(0, 10),
   }
-
-  return initialReports
 }
 
 export default function CitizenReports() {
-  const [reports, setReports] = useState<CitizenReport[]>(readReports)
+  const [reports, setReports] = useState<CitizenReport[]>([])
   const [issue, setIssue] = useState('Road Damage')
   const [location, setLocation] = useState('')
   const [priority, setPriority] = useState<Priority>('Medium')
@@ -65,16 +62,156 @@ export default function CitizenReports() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
+  const [user, setUser] = useState<User | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [checkingAdmin, setCheckingAdmin] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+
+  // Restore the session and respond to login/logout events.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(reports))
-    } catch {
-      setMessage('Unable to save reports in browser storage.')
-    }
-  }, [reports])
+    let active = true
 
-  function submitReport(event: FormEvent<HTMLFormElement>) {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) {
+        setUser(session?.user ?? null)
+        setMessage('')
+      }
+    })
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return
+
+      if (error) {
+        setMessage(`Unable to check sign-in status: ${error.message}`)
+        return
+      }
+
+      setUser(data.session?.user ?? null)
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  // Determine the admin role from the protected database function.
+  useEffect(() => {
+    let active = true
+
+    async function checkAdminRole() {
+      setIsAdmin(false)
+
+      if (!user) {
+        setCheckingAdmin(false)
+        return
+      }
+
+      setCheckingAdmin(true)
+
+      const { data, error } = await supabase.rpc('is_civic_admin')
+
+      if (!active) return
+
+      setIsAdmin(!error && data === true)
+      setCheckingAdmin(false)
+
+      if (error) {
+        setMessage(`Unable to verify administrator access: ${error.message}`)
+      } else if (data !== true) {
+        setMessage('Signed in, but this account does not have administrator access.')
+      }
+    }
+
+    void checkAdminRole()
+
+    return () => {
+      active = false
+    }
+  }, [user])
+
+  // Load shared reports from Supabase.
+  useEffect(() => {
+    let active = true
+
+    async function loadReports() {
+      setLoading(true)
+
+      const { data, error } = await supabase
+        .from('citizen_reports')
+        .select(
+          'id, title, description, category, priority, location, status, created_at',
+        )
+        .order('created_at', { ascending: false })
+
+      if (!active) return
+
+      if (error) {
+        setMessage(`Unable to load reports: ${error.message}`)
+      } else {
+        setReports((data ?? []).map((row) =>
+          mapDatabaseReport(row as DatabaseReport),
+        ))
+      }
+
+      setLoading(false)
+    }
+
+    void loadReports()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthBusy(true)
+    setMessage('')
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+
+    setAuthBusy(false)
+
+    if (error) {
+      setMessage(`Sign-in failed: ${error.message}`)
+      return
+    }
+
+    setPassword('')
+    setShowLogin(false)
+    setMessage('Signed in. Verifying administrator permissions...')
+  }
+
+  async function signOut() {
+    setAuthBusy(true)
+
+    const { error } = await supabase.auth.signOut()
+
+    setAuthBusy(false)
+
+    if (error) {
+      setMessage(`Sign-out failed: ${error.message}`)
+      return
+    }
+
+    setIsAdmin(false)
+    setMessage('You have signed out.')
+  }
+
+  async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const cleanLocation = location.trim()
@@ -85,15 +222,32 @@ export default function CitizenReports() {
       return
     }
 
-    const newReport: CitizenReport = {
-      id: `CIV-${Date.now().toString().slice(-8)}`,
-      issue,
-      location: cleanLocation,
-      priority,
-      description: cleanDescription,
-      status: 'Submitted',
-      createdAt: new Date().toISOString().slice(0, 10),
+    setSubmitting(true)
+    setMessage('')
+
+    const { data, error } = await supabase
+      .from('citizen_reports')
+      .insert({
+        title: issue,
+        description: cleanDescription,
+        category: issue,
+        priority,
+        location: cleanLocation,
+        status: 'Submitted',
+      })
+      .select(
+        'id, title, description, category, priority, location, status, created_at',
+      )
+      .single()
+
+    setSubmitting(false)
+
+    if (error) {
+      setMessage(`Report submission failed: ${error.message}`)
+      return
     }
+
+    const newReport = mapDatabaseReport(data as DatabaseReport)
 
     setReports((current) => [newReport, ...current])
     setIssue('Road Damage')
@@ -102,17 +256,40 @@ export default function CitizenReports() {
     setDescription('')
     setSearch('')
     setStatusFilter('All')
-    setMessage(`Report submitted. Reference: ${newReport.id}`)
+    setMessage(`Report submitted successfully. Reference: ${newReport.id}`)
   }
 
-  function updateStatus(id: string, status: ReportStatus) {
-    setReports((current) =>
-      current.map((report) =>
-        report.id === id ? { ...report, status } : report,
-      ),
-    )
+  async function updateStatus(dbId: string, status: ReportStatus) {
+    if (!user || !isAdmin) {
+      setMessage('Only an authenticated administrator can update statuses.')
+      return
+    }
 
-    setMessage(`Report ${id} updated to ${status}.`)
+    const previousReports = reports
+    const report = reports.find((item) => item.dbId === dbId)
+
+    if (!report || report.status === status) return
+
+    setUpdatingId(dbId)
+    setMessage('')
+
+    const { error } = await supabase
+      .from('citizen_reports')
+      .update({ status })
+      .eq('id', dbId)
+
+    setUpdatingId(null)
+
+    if (error) {
+      setMessage(`Status update failed: ${error.message}`)
+      return
+    }
+
+    setReports(previousReports.map((item) =>
+      item.dbId === dbId ? { ...item, status } : item,
+    ))
+
+    setMessage(`Report ${report.id} updated to ${status}.`)
   }
 
   const visibleReports = reports.filter((report) => {
@@ -147,14 +324,109 @@ export default function CitizenReports() {
             Report infrastructure problems and track their progress.
           </p>
         </div>
-        <span className="cr-demo-tag">PROTOTYPE</span>
+        <span className="cr-demo-tag">
+          {isAdmin ? 'ADMINISTRATOR' : 'PROTOTYPE'}
+        </span>
+      </div>
+
+      <div className="cr-form" style={{ marginBottom: '16px' }}>
+        <div className="cr-form-heading">
+          <h3>Administrator access</h3>
+          <p>
+            {checkingAdmin
+              ? 'Checking administrator permissions...'
+              : isAdmin
+                ? `Signed in as ${user?.email ?? 'administrator'}`
+                : user
+                  ? `Signed in as ${user.email ?? 'user'} — administrator access not granted`
+                  : 'Sign in with your registered administrator account to update report statuses.'}
+          </p>
+        </div>
+
+        {!user && !showLogin && (
+          <button
+            className="cr-submit"
+            type="button"
+            onClick={() => setShowLogin(true)}
+          >
+            Administrator sign in
+          </button>
+        )}
+
+        {!user && showLogin && (
+          <form onSubmit={signIn}>
+            <label htmlFor="cr-admin-email">Email address</label>
+            <input
+              id="cr-admin-email"
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+
+            <label htmlFor="cr-admin-password">Password</label>
+            <input
+              id="cr-admin-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+
+            <button className="cr-submit" type="submit" disabled={authBusy}>
+              {authBusy ? 'Signing in...' : 'Sign in'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowLogin(false)
+                setPassword('')
+              }}
+              disabled={authBusy}
+            >
+              Cancel
+            </button>
+          </form>
+        )}
+
+        {user && (
+          <button
+            type="button"
+            className="cr-submit"
+            onClick={() => void signOut()}
+            disabled={authBusy}
+          >
+            {authBusy ? 'Please wait...' : 'Sign out'}
+          </button>
+        )}
+
+        {message && (
+          <p className="cr-message" role="status">
+            {message}
+          </p>
+        )}
       </div>
 
       <div className="cr-stats">
-        <article><span>Total reports</span><strong>{reports.length}</strong></article>
-        <article><span>Submitted</span><strong>{submittedCount}</strong></article>
-        <article><span>Under review</span><strong>{reviewCount}</strong></article>
-        <article><span>Resolved</span><strong>{resolvedCount}</strong></article>
+        <article>
+          <span>Total reports</span>
+          <strong>{reports.length}</strong>
+        </article>
+        <article>
+          <span>Submitted</span>
+          <strong>{submittedCount}</strong>
+        </article>
+        <article>
+          <span>Under review</span>
+          <strong>{reviewCount}</strong>
+        </article>
+        <article>
+          <span>Resolved</span>
+          <strong>{resolvedCount}</strong>
+        </article>
       </div>
 
       <div className="cr-layout">
@@ -216,22 +488,25 @@ export default function CitizenReports() {
             {description.length}/1000 characters
           </p>
 
-          <button className="cr-submit" type="submit">
-            + Submit Report
+          <button
+            className="cr-submit"
+            type="submit"
+            disabled={submitting || loading}
+          >
+            {submitting ? 'Submitting...' : '+ Submit Report'}
           </button>
 
-          {message && <p className="cr-message" role="status">{message}</p>}
-
           <p className="cr-disclaimer">
-            Prototype only. Reports are saved in this browser. Do not enter
-            sensitive personal information.
+            Prototype only. Reports are stored in the shared database and
+            may be visible to other users. Do not enter sensitive personal
+            information.
           </p>
         </form>
 
         <div className="cr-list-panel">
           <div className="cr-list-heading">
             <h3>Report register</h3>
-            <p>Search reports and update their status.</p>
+            <p>Search reports and view their current status.</p>
           </div>
 
           <div className="cr-filters">
@@ -255,18 +530,26 @@ export default function CitizenReports() {
           </div>
 
           <div className="cr-report-list">
-            {visibleReports.length === 0 && (
+            {loading && (
+              <div className="cr-empty">
+                <p>Loading reports from the database...</p>
+              </div>
+            )}
+
+            {!loading && visibleReports.length === 0 && (
               <div className="cr-empty">
                 <h3>No reports found</h3>
-                <p>Try a different search or filter.</p>
+                <p>Try a different search or filter, or submit a report.</p>
               </div>
             )}
 
             {visibleReports.map((report) => (
-              <article className="cr-report-card" key={report.id}>
+              <article className="cr-report-card" key={report.dbId}>
                 <div className="cr-report-top">
                   <span className="cr-report-id">{report.id}</span>
-                  <span className={`cr-priority priority-${report.priority.toLowerCase()}`}>
+                  <span
+                    className={`cr-priority priority-${report.priority.toLowerCase()}`}
+                  >
                     {report.priority} priority
                   </span>
                 </div>
@@ -276,20 +559,30 @@ export default function CitizenReports() {
                 <p className="cr-report-description">{report.description}</p>
 
                 <div className="cr-report-bottom">
-                  <span className={`cr-status status-${report.status.toLowerCase().replace(' ', '-')}`}>
+                  <span
+                    className={`cr-status status-${report.status.toLowerCase().replace(' ', '-')}`}
+                  >
                     {report.status}
                   </span>
                   <span className="cr-report-date">{report.createdAt}</span>
                 </div>
 
-                <label className="cr-status-label" htmlFor={`status-${report.id}`}>
-                  Update status
+                <label
+                  className="cr-status-label"
+                  htmlFor={`status-${report.dbId}`}
+                >
+                  {isAdmin ? 'Update status' : 'Status (administrator access required)'}
                 </label>
+
                 <select
-                  id={`status-${report.id}`}
+                  id={`status-${report.dbId}`}
                   value={report.status}
+                  disabled={!isAdmin || checkingAdmin || updatingId === report.dbId}
                   onChange={(event) =>
-                    updateStatus(report.id, event.target.value as ReportStatus)
+                    void updateStatus(
+                      report.dbId,
+                      event.target.value as ReportStatus,
+                    )
                   }
                 >
                   <option value="Submitted">Submitted</option>

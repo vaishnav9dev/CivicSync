@@ -1,14 +1,16 @@
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from './lib/supabase'
 import './App.css'
 import ProjectMap from './ProjectMap'
 import CitizenReports from './CitizenReports'
+import ProjectManagement from './ProjectManagement'
 
 type ProjectStatus = 'Planned' | 'In Progress' | 'Completed'
 type ProjectCategory = 'Water' | 'Drainage' | 'Road' | 'Telecom'
 
 type Project = {
-  id: number
+  id: string
   name: string
   department: string
   road: string
@@ -22,7 +24,7 @@ type Project = {
 
 const initialProjects: Project[] = [
   {
-    id: 1,
+    id: 'demo-1',
     name: 'Water Pipeline Replacement',
     department: 'Water Supply',
     road: 'Main Road',
@@ -34,7 +36,7 @@ const initialProjects: Project[] = [
     description: 'Replacement of an ageing water pipeline.',
   },
   {
-    id: 2,
+    id: 'demo-2',
     name: 'Drainage System Upgrade',
     department: 'Public Works',
     road: 'Main Road',
@@ -46,7 +48,7 @@ const initialProjects: Project[] = [
     description: 'Drainage improvement and maintenance work.',
   },
   {
-    id: 3,
+    id: 'demo-3',
     name: 'Road Resurfacing',
     department: 'Public Works',
     road: 'MG Road',
@@ -58,7 +60,7 @@ const initialProjects: Project[] = [
     description: 'Resurfacing damaged sections of the road.',
   },
   {
-    id: 4,
+    id: 'demo-4',
     name: 'Streetlight Modernisation',
     department: 'Electricity',
     road: 'Gandhi Street',
@@ -70,7 +72,7 @@ const initialProjects: Project[] = [
     description: 'Upgrading street lighting infrastructure.',
   },
   {
-    id: 5,
+    id: 'demo-5',
     name: 'Water Connection Upgrade',
     department: 'Water Supply',
     road: 'MG Road',
@@ -82,7 +84,7 @@ const initialProjects: Project[] = [
     description: 'Upgrading existing water connections.',
   },
   {
-    id: 6,
+    id: 'demo-6',
     name: 'Lake Road Repairs',
     department: 'Public Works',
     road: 'Lake View Road',
@@ -94,6 +96,41 @@ const initialProjects: Project[] = [
     description: 'Repairing damaged road sections.',
   },
 ]
+
+type ProjectRow = {
+  id: string
+  name: string
+  department: string
+  road: string
+  start_date: string
+  end_date: string
+  status: string
+  category: string
+  budget: number | string
+  description: string
+}
+
+function mapProjectRow(row: ProjectRow): Project {
+  const statuses: ProjectStatus[] = ['Planned', 'In Progress', 'Completed']
+  const categories: ProjectCategory[] = ['Water', 'Drainage', 'Road', 'Telecom']
+
+  return {
+    id: row.id,
+    name: row.name,
+    department: row.department,
+    road: row.road,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    status: statuses.includes(row.status as ProjectStatus)
+      ? (row.status as ProjectStatus)
+      : 'Planned',
+    category: categories.includes(row.category as ProjectCategory)
+      ? (row.category as ProjectCategory)
+      : 'Road',
+    budget: Number(row.budget ?? 0),
+    description: row.description ?? '',
+  }
+}
 
 const navItems = [
   ['▦', 'Dashboard'],
@@ -116,8 +153,7 @@ function formatDate(date: string): string {
 
 function datesOverlap(first: Project, second: Project): boolean {
   return (
-    first.road.trim().toLowerCase() ===
-      second.road.trim().toLowerCase() &&
+    first.road.trim().toLowerCase() === second.road.trim().toLowerCase() &&
     first.startDate <= second.endDate &&
     second.startDate <= first.endDate
   )
@@ -129,10 +165,7 @@ function getConflicts(projects: Project[]) {
   for (let i = 0; i < projects.length; i += 1) {
     for (let j = i + 1; j < projects.length; j += 1) {
       if (datesOverlap(projects[i], projects[j])) {
-        conflicts.push({
-          first: projects[i],
-          second: projects[j],
-        })
+        conflicts.push({ first: projects[i], second: projects[j] })
       }
     }
   }
@@ -142,16 +175,82 @@ function getConflicts(projects: Project[]) {
 
 function App() {
   const [activeNav, setActiveNav] = useState('Dashboard')
-  const [projects, setProjects] = useState<Project[]>(initialProjects)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(true)
+  const [projectsRefreshKey, setProjectsRefreshKey] = useState(0)
+  const [projectDataMessage, setProjectDataMessage] = useState('')
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
-  const [simulatorProjectId, setSimulatorProjectId] = useState(2)
+  const [simulatorProjectId, setSimulatorProjectId] = useState('')
   const [proposedStart, setProposedStart] = useState('2026-10-19')
   const [proposedEnd, setProposedEnd] = useState('2026-10-25')
   const [simulationMessage, setSimulationMessage] = useState('')
+  const [scheduleBusy, setScheduleBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    async function loadProjects() {
+      setProjectsLoading(true)
+      setProjectDataMessage('')
+
+      const { data, error } = await supabase
+        .from('projects')
+        .select(
+          'id, name, department, road, start_date, end_date, status, category, budget, description',
+        )
+        .order('start_date', { ascending: true })
+
+      if (!active) return
+
+      if (error) {
+        setProjectDataMessage(
+          `Unable to load projects from Supabase: ${error.message}`,
+        )
+        setProjects([])
+      } else {
+        const loadedProjects = ((data ?? []) as ProjectRow[]).map(mapProjectRow)
+        setProjects(loadedProjects)
+
+        if (loadedProjects.length === 0) {
+          setProjectDataMessage(
+            'The projects table is empty. Run the seed SQL in Supabase to add the six demo projects.',
+          )
+        }
+      }
+
+      setProjectsLoading(false)
+    }
+
+    void loadProjects()
+
+    return () => {
+      active = false
+    }
+  }, [projectsRefreshKey])
+
+  useEffect(() => {
+    if (projects.length === 0) {
+      setSimulatorProjectId('')
+      return
+    }
+
+    const selectedExists = projects.some(
+      (project) => project.id === simulatorProjectId,
+    )
+
+    if (!selectedExists) {
+      const preferredProject =
+        projects.find((project) => project.name === 'Drainage System Upgrade') ??
+        projects[0]
+
+      setSimulatorProjectId(preferredProject.id)
+      setProposedStart(preferredProject.startDate)
+      setProposedEnd(preferredProject.endDate)
+    }
+  }, [projects, simulatorProjectId])
 
   const conflicts = useMemo(() => getConflicts(projects), [projects])
 
-  // ProjectMap expects start and end, not startDate and endDate.
   const mapProjects = useMemo(
     () =>
       projects.map((project) => ({
@@ -182,14 +281,12 @@ function App() {
     (project) => project.id === simulatorProjectId,
   )
 
-  function selectMapProject(mapProject: { id: number }) {
+  function selectMapProject(mapProject: { id: string }) {
     const matchingProject = projects.find(
       (project) => project.id === mapProject.id,
     )
 
-    if (matchingProject) {
-      setSelectedProject(matchingProject)
-    }
+    if (matchingProject) setSelectedProject(matchingProject)
   }
 
   function getProjectConflictsForRange(
@@ -215,9 +312,7 @@ function App() {
     }
 
     if (proposedEnd < proposedStart) {
-      setSimulationMessage(
-        'The end date must be on or after the start date.',
-      )
+      setSimulationMessage('The end date must be on or after the start date.')
       return
     }
 
@@ -233,9 +328,7 @@ function App() {
     )
 
     if (simulatedConflicts.length === 0) {
-      setSimulationMessage(
-        'No scheduling conflicts detected for these dates.',
-      )
+      setSimulationMessage('No scheduling conflicts detected for these dates.')
       return
     }
 
@@ -248,17 +341,36 @@ function App() {
     )
   }
 
-  function applySchedule() {
+  async function verifyAdministrator(): Promise<boolean> {
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession()
+
+    if (sessionError || !sessionData.session) {
+      setSimulationMessage(
+        'Please sign in with the administrator account in Citizen Reports before saving a schedule.',
+      )
+      return false
+    }
+
+    const { data, error } = await supabase.rpc('is_civic_admin')
+
+    if (error || data !== true) {
+      setSimulationMessage(
+        'Only the CivicSync administrator can save project schedules. Check administrator sign-in in Citizen Reports.',
+      )
+      return false
+    }
+
+    return true
+  }
+
+  async function applySchedule() {
     if (!selectedSimulationProject) {
       setSimulationMessage('Please select a valid project.')
       return
     }
 
-    if (
-      !proposedStart ||
-      !proposedEnd ||
-      proposedEnd < proposedStart
-    ) {
+    if (!proposedStart || !proposedEnd || proposedEnd < proposedStart) {
       setSimulationMessage('Please enter a valid date range.')
       return
     }
@@ -285,26 +397,107 @@ function App() {
       return
     }
 
-    const updatedProjects = projects.map((project) =>
-      project.id === simulatorProjectId
-        ? updatedProject
-        : project,
-    )
+    setScheduleBusy(true)
+    setSimulationMessage('Checking administrator permissions...')
 
-    setProjects(updatedProjects)
-    setSimulationMessage(
-      'Schedule updated for this session. Review the conflict panel for changes.',
-    )
-    setSelectedProject(null)
+    try {
+      const isAdmin = await verifyAdministrator()
+      if (!isAdmin) return
+
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          start_date: proposedStart,
+          end_date: proposedEnd,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedSimulationProject.id)
+
+      if (error) {
+        setSimulationMessage(`Unable to save the schedule: ${error.message}`)
+        return
+      }
+
+      setProjects((current) =>
+        current.map((project) =>
+          project.id === selectedSimulationProject.id
+            ? updatedProject
+            : project,
+        ),
+      )
+
+      setSimulationMessage(
+        'Schedule saved to Supabase. It will remain after refresh.',
+      )
+      setSelectedProject(null)
+    } finally {
+      setScheduleBusy(false)
+    }
   }
 
-  function resetSchedule() {
-    setProjects([...initialProjects])
-    setSimulatorProjectId(2)
-    setProposedStart('2026-10-19')
-    setProposedEnd('2026-10-25')
-    setSimulationMessage('Demo schedule restored to its original state.')
-    setSelectedProject(null)
+  async function resetSchedule() {
+    setScheduleBusy(true)
+    setSimulationMessage('Checking administrator permissions...')
+
+    try {
+      const isAdmin = await verifyAdministrator()
+      if (!isAdmin) return
+
+      const resetResults = await Promise.all(
+        initialProjects.map((original) =>
+          supabase
+            .from('projects')
+            .update({
+              start_date: original.startDate,
+              end_date: original.endDate,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('name', original.name),
+        ),
+      )
+
+      const failedUpdate = resetResults.find((result) => result.error)
+
+      if (failedUpdate?.error) {
+        setSimulationMessage(
+          `Unable to reset schedules: ${failedUpdate.error.message}`,
+        )
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('projects')
+        .select(
+          'id, name, department, road, start_date, end_date, status, category, budget, description',
+        )
+        .order('start_date', { ascending: true })
+
+      if (error) {
+        setSimulationMessage(
+          `Schedules were reset, but reloading failed: ${error.message}`,
+        )
+        return
+      }
+
+      const loadedProjects = ((data ?? []) as ProjectRow[]).map(mapProjectRow)
+      setProjects(loadedProjects)
+
+      const preferredProject =
+        loadedProjects.find(
+          (project) => project.name === 'Drainage System Upgrade',
+        ) ?? loadedProjects[0]
+
+      if (preferredProject) {
+        setSimulatorProjectId(preferredProject.id)
+        setProposedStart(preferredProject.startDate)
+        setProposedEnd(preferredProject.endDate)
+      }
+
+      setSimulationMessage('Demo schedule dates restored in Supabase.')
+      setSelectedProject(null)
+    } finally {
+      setScheduleBusy(false)
+    }
   }
 
   function renderProjectStatus(status: ProjectStatus) {
@@ -345,12 +538,14 @@ function App() {
                 <p>Overlapping work on the same road</p>
               </div>
             </div>
+
             <div className="conflict-project">
               <strong>{first.name}</strong>
               <span>
                 {formatDate(first.startDate)} – {formatDate(first.endDate)}
               </span>
             </div>
+
             <div className="conflict-project">
               <strong>{second.name}</strong>
               <span>
@@ -440,6 +635,12 @@ function App() {
           <CitizenReports />
         ) : (
           <>
+            {projectDataMessage && (
+              <div className="panel" role="status">
+                <p>{projectDataMessage}</p>
+              </div>
+            )}
+
             {activeNav === 'Dashboard' && (
               <section className="welcome-banner">
                 <div className="welcome-copy">
@@ -493,7 +694,7 @@ function App() {
                     <span>Total projects</span>
                     <span className="metric-icon blue">▤</span>
                   </div>
-                  <strong>{projects.length}</strong>
+                  <strong>{projectsLoading ? '…' : projects.length}</strong>
                   <p>Tracked infrastructure projects</p>
                 </article>
 
@@ -533,8 +734,7 @@ function App() {
                   <div>
                     <h3>Public Works Overview</h3>
                     <p>
-                      Select a marker to inspect a sample infrastructure
-                      project.
+                      Select a marker to inspect an infrastructure project.
                     </p>
                   </div>
                   {activeNav === 'Dashboard' && (
@@ -548,10 +748,16 @@ function App() {
                   )}
                 </div>
 
-                <ProjectMap
-                  projects={mapProjects}
-                  onSelect={selectMapProject}
-                />
+                {projectsLoading ? (
+                  <div className="empty-state">
+                    <p>Loading projects from Supabase...</p>
+                  </div>
+                ) : (
+                  <ProjectMap
+                    projects={mapProjects}
+                    onSelect={selectMapProject}
+                  />
+                )}
 
                 {selectedProject && (
                   <div className="selected-project-detail">
@@ -586,7 +792,11 @@ function App() {
                   </span>
                 </div>
 
-                {renderConflictList()}
+                {projectsLoading ? (
+                  <p>Checking project schedules...</p>
+                ) : (
+                  renderConflictList()
+                )}
 
                 <button
                   type="button"
@@ -611,52 +821,18 @@ function App() {
                     {conflicts.length} detected
                   </span>
                 </div>
-                {renderConflictList()}
+                {projectsLoading ? <p>Loading schedules...</p> : renderConflictList()}
               </section>
             )}
 
             {activeNav === 'Projects' && (
-              <section className="panel projects-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h3>Infrastructure Projects</h3>
-                    <p>All projects tracked in this prototype.</p>
-                  </div>
-                  <span className="environment-tag">
-                    {projects.length} PROJECTS
-                  </span>
-                </div>
-
-                <div className="project-table-wrap">
-                  <table className="project-table">
-                    <thead>
-                      <tr>
-                        <th>Project</th>
-                        <th>Department</th>
-                        <th>Location</th>
-                        <th>Start date</th>
-                        <th>End date</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {projects.map((project) => (
-                        <tr key={project.id}>
-                          <td>
-                            <strong>{project.name}</strong>
-                            <small>{project.category}</small>
-                          </td>
-                          <td>{project.department}</td>
-                          <td>{project.road}</td>
-                          <td>{formatDate(project.startDate)}</td>
-                          <td>{formatDate(project.endDate)}</td>
-                          <td>{renderProjectStatus(project.status)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+              <ProjectManagement
+                projects={projects}
+                loading={projectsLoading}
+                onProjectsChanged={() =>
+                  setProjectsRefreshKey((current) => current + 1)
+                }
+              />
             )}
 
             {activeNav === 'Schedule Simulator' && (
@@ -678,7 +854,7 @@ function App() {
                       id="sim-project"
                       value={simulatorProjectId}
                       onChange={(event) => {
-                        const nextId = Number(event.target.value)
+                        const nextId = event.target.value
                         const nextProject = projects.find(
                           (project) => project.id === nextId,
                         )
@@ -692,7 +868,11 @@ function App() {
 
                         setSimulationMessage('')
                       }}
+                      disabled={projectsLoading || projects.length === 0}
                     >
+                      {projects.length === 0 && (
+                        <option value="">No projects available</option>
+                      )}
                       {projects.map((project) => (
                         <option key={project.id} value={project.id}>
                           {project.name}
@@ -743,20 +923,23 @@ function App() {
                     type="button"
                     className="primary-button"
                     onClick={runSimulation}
+                    disabled={projectsLoading || !selectedSimulationProject}
                   >
                     Check for Conflicts
                   </button>
                   <button
                     type="button"
                     className="secondary-button"
-                    onClick={applySchedule}
+                    onClick={() => void applySchedule()}
+                    disabled={scheduleBusy || projectsLoading || !selectedSimulationProject}
                   >
-                    Apply Schedule
+                    {scheduleBusy ? 'Saving...' : 'Apply Schedule'}
                   </button>
                   <button
                     type="button"
                     className="secondary-button"
-                    onClick={resetSchedule}
+                    onClick={() => void resetSchedule()}
+                    disabled={scheduleBusy || projectsLoading || projects.length === 0}
                   >
                     Reset Demo
                   </button>
@@ -770,8 +953,8 @@ function App() {
                 )}
 
                 <p className="demo-disclaimer">
-                  Schedule changes remain in application memory and reset when
-                  the page is refreshed.
+                  Saving and resetting schedules requires administrator
+                  sign-in through Citizen Reports.
                 </p>
               </section>
             )}
@@ -789,7 +972,7 @@ function App() {
                     <span className="activity-dot green-dot" />
                     <div>
                       <strong>Dashboard initialised</strong>
-                      <p>Demo infrastructure data loaded.</p>
+                      <p>Infrastructure projects loaded from Supabase.</p>
                     </div>
                     <span>Demo</span>
                   </article>
@@ -807,7 +990,7 @@ function App() {
                     <span className="activity-dot orange-dot" />
                     <div>
                       <strong>Citizen reporting module</strong>
-                      <p>Reports are stored in this browser.</p>
+                      <p>Reports are stored in the shared Supabase database.</p>
                     </div>
                     <button
                       type="button"
@@ -840,15 +1023,15 @@ function App() {
                   </div>
                   <div>
                     <strong>Environment</strong>
-                    <span>Local demonstration</span>
+                    <span>Supabase-backed prototype</span>
                   </div>
                   <div>
                     <strong>Project data</strong>
-                    <span>Stored in application state</span>
+                    <span>Stored in Supabase</span>
                   </div>
                   <div>
                     <strong>Citizen reports</strong>
-                    <span>Stored in browser local storage</span>
+                    <span>Stored in the shared Supabase database</span>
                   </div>
                 </div>
               </section>

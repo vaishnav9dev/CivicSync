@@ -11,7 +11,7 @@ import 'leaflet/dist/leaflet.css'
 import './ProjectMap.css'
 
 type MapProject = {
-  id: number
+  id: string
   name: string
   department: string
   road: string
@@ -27,13 +27,13 @@ type ProjectMapProps = {
 
 // Fictional demo coordinates near Bengaluru.
 // These do not represent verified infrastructure work sites.
-const demoCoordinates: Record<number, [number, number]> = {
-  1: [12.9716, 77.5946],
-  2: [12.9742, 77.5990],
-  3: [12.9668, 77.6025],
-  4: [12.9790, 77.5895],
-  5: [12.9650, 77.5880],
-  6: [12.9820, 77.6010],
+const demoCoordinates: Record<string, [number, number]> = {
+  'Water Pipeline Replacement': [12.9716, 77.5946],
+  'Drainage System Upgrade': [12.9742, 77.5990],
+  'Road Resurfacing': [12.9668, 77.6025],
+  'Streetlight Modernisation': [12.9790, 77.5895],
+  'Water Connection Upgrade': [12.9650, 77.5880],
+  'Lake Road Repairs': [12.9820, 77.6010],
 }
 
 const categoryColors: Record<string, string> = {
@@ -48,7 +48,7 @@ function ProjectMap({ projects, onSelect }: ProjectMapProps) {
     useState<MapProject | null>(null)
 
   const selectedPosition = selectedProject
-    ? demoCoordinates[selectedProject.id]
+    ? demoCoordinates[selectedProject.name]
     : undefined
 
   const mapCenter: LatLngExpression = [12.973, 77.595]
@@ -72,12 +72,11 @@ function ProjectMap({ projects, onSelect }: ProjectMapProps) {
       />
 
       {projects.map((project) => {
-        const position = demoCoordinates[project.id]
+        const position = demoCoordinates[project.name]
 
         if (!position) return null
 
-        const color =
-          categoryColors[project.category] ?? '#0899b6'
+        const color = categoryColors[project.category] ?? '#0899b6'
 
         return (
           <CircleMarker
@@ -117,8 +116,7 @@ function ProjectMap({ projects, onSelect }: ProjectMapProps) {
             </p>
 
             <p>
-              <strong>Department:</strong>{' '}
-              {selectedProject.department}
+              <strong>Department:</strong> {selectedProject.department}
             </p>
 
             <p>
