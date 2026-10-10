@@ -13,34 +13,54 @@
 }
 
 .real-map .leaflet-popup-content-wrapper {
-  border-radius: 9px;
+  border-radius: 10px;
 }
 
 .real-map .leaflet-popup-content {
-  margin: 13px;
-  min-width: 160px;
+  margin: 14px;
+  min-width: 185px;
 }
 
-.map-popup strong {
+.real-map .leaflet-interactive {
+  cursor: pointer;
+}
+
+.map-popup .popup-category {
+  display: inline-block;
+  background: #e6f4ee;
+  color: #167858;
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.map-popup h3 {
+  margin: 5px 0 10px;
   color: #173757;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .map-popup p {
-  margin: 6px 0;
-  font-size: 11px;
+  margin: 7px 0;
   color: #526980;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
-.map-popup small {
+.map-popup p strong {
+  color: #294663;
+}
+
+.map-popup .popup-disclaimer {
+  display: block;
+  border-top: 1px solid #e7edf3;
+  margin-top: 10px;
+  padding-top: 8px;
   color: #16835e;
-  font-size: 10px;
-}
-
-.map-demo-note {
   font-size: 9px;
-  color: #73869a;
-  margin: 0 0 9px;
 }
 
 @media (max-width: 720px) {

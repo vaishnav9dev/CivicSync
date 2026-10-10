@@ -2,16 +2,22 @@
 import { useMemo, useState } from 'react'
 import './App.css'
 import ProjectMap from './ProjectMap'
+import CitizenReports from './CitizenReports'
+
+type ProjectStatus = 'Planned' | 'In Progress' | 'Completed'
+type ProjectCategory = 'Water' | 'Drainage' | 'Road' | 'Telecom'
 
 type Project = {
   id: number
   name: string
   department: string
   road: string
-  start: string
-  end: string
-  status: 'In Progress' | 'Planned' | 'Completed'
-  category: string
+  startDate: string
+  endDate: string
+  status: ProjectStatus
+  category: ProjectCategory
+  budget: number
+  description: string
 }
 
 const initialProjects: Project[] = [
@@ -20,60 +26,72 @@ const initialProjects: Project[] = [
     name: 'Water Pipeline Replacement',
     department: 'Water Supply',
     road: 'Main Road',
-    start: '2026-10-12',
-    end: '2026-10-18',
+    startDate: '2026-10-12',
+    endDate: '2026-10-18',
     status: 'In Progress',
     category: 'Water',
+    budget: 850000,
+    description: 'Replacement of an ageing water pipeline.',
   },
   {
     id: 2,
     name: 'Drainage System Upgrade',
     department: 'Public Works',
     road: 'Main Road',
-    start: '2026-10-15',
-    end: '2026-10-21',
+    startDate: '2026-10-15',
+    endDate: '2026-10-21',
     status: 'Planned',
     category: 'Drainage',
+    budget: 620000,
+    description: 'Drainage improvement and maintenance work.',
   },
   {
     id: 3,
     name: 'Road Resurfacing',
     department: 'Public Works',
     road: 'MG Road',
-    start: '2026-10-18',
-    end: '2026-10-27',
+    startDate: '2026-10-18',
+    endDate: '2026-10-27',
     status: 'Planned',
     category: 'Road',
+    budget: 1200000,
+    description: 'Resurfacing damaged sections of the road.',
   },
   {
     id: 4,
     name: 'Streetlight Modernisation',
     department: 'Electricity',
     road: 'Gandhi Street',
-    start: '2026-10-22',
-    end: '2026-10-28',
+    startDate: '2026-10-22',
+    endDate: '2026-10-28',
     status: 'In Progress',
     category: 'Telecom',
+    budget: 450000,
+    description: 'Upgrading street lighting infrastructure.',
   },
   {
     id: 5,
     name: 'Water Connection Upgrade',
     department: 'Water Supply',
     road: 'MG Road',
-    start: '2026-10-20',
-    end: '2026-10-26',
+    startDate: '2026-10-20',
+    endDate: '2026-10-26',
     status: 'Planned',
     category: 'Water',
+    budget: 380000,
+    description: 'Upgrading existing water connections.',
   },
   {
     id: 6,
     name: 'Lake Road Repairs',
     department: 'Public Works',
     road: 'Lake View Road',
-    start: '2026-11-02',
-    end: '2026-11-10',
+    startDate: '2026-11-02',
+    endDate: '2026-11-10',
     status: 'Planned',
     category: 'Road',
+    budget: 740000,
+    description: 'Repairing damaged road sections.',
   },
 ]
 
@@ -88,720 +106,847 @@ const navItems = [
   ['⚙', 'Settings'],
 ]
 
-function overlaps(a: Project, b: Project) {
-  return a.start <= b.end && b.start <= a.end
+function formatDate(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
-function getConflicts(items: Project[]) {
-  const results: { first: Project; second: Project }[] = []
+function datesOverlap(first: Project, second: Project): boolean {
+  return (
+    first.road.trim().toLowerCase() ===
+      second.road.trim().toLowerCase() &&
+    first.startDate <= second.endDate &&
+    second.startDate <= first.endDate
+  )
+}
 
-  for (let i = 0; i < items.length; i++) {
-    for (let j = i + 1; j < items.length; j++) {
-      const first = items[i]
-      const second = items[j]
+function getConflicts(projects: Project[]) {
+  const conflicts: { first: Project; second: Project }[] = []
 
-      if (
-        first.road.trim().toLowerCase() ===
-          second.road.trim().toLowerCase() &&
-        overlaps(first, second)
-      ) {
-        results.push({ first, second })
+  for (let i = 0; i < projects.length; i += 1) {
+    for (let j = i + 1; j < projects.length; j += 1) {
+      if (datesOverlap(projects[i], projects[j])) {
+        conflicts.push({
+          first: projects[i],
+          second: projects[j],
+        })
       }
     }
   }
 
-  return results
-}
-
-function shortDate(date: string) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return conflicts
 }
 
 function App() {
   const [activeNav, setActiveNav] = useState('Dashboard')
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('All')
-  const [projects, setProjects] = useState(initialProjects)
-  const [simulationRun, setSimulationRun] = useState(false)
-  const [notice, setNotice] = useState('')
+  const [projects, setProjects] = useState<Project[]>(initialProjects)
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [simulatorProjectId, setSimulatorProjectId] = useState(2)
+  const [proposedStart, setProposedStart] = useState('2026-10-19')
+  const [proposedEnd, setProposedEnd] = useState('2026-10-25')
+  const [simulationMessage, setSimulationMessage] = useState('')
 
   const conflicts = useMemo(() => getConflicts(projects), [projects])
 
-  const filteredProjects = projects.filter((project) => {
-    const query = search.trim().toLowerCase()
-    const matchesText = `${project.name} ${project.road} ${project.department}`
-      .toLowerCase()
-      .includes(query)
+  // ProjectMap expects start and end, not startDate and endDate.
+  const mapProjects = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        department: project.department,
+        road: project.road,
+        start: project.startDate,
+        end: project.endDate,
+        category: project.category,
+      })),
+    [projects],
+  )
 
-    const matchesCategory =
-      category === 'All' || project.category === category
+  const plannedCount = projects.filter(
+    (project) => project.status === 'Planned',
+  ).length
 
-    return matchesText && matchesCategory
-  })
+  const ongoingCount = projects.filter(
+    (project) => project.status === 'In Progress',
+  ).length
+
+  const completedCount = projects.filter(
+    (project) => project.status === 'Completed',
+  ).length
+
+  const selectedSimulationProject = projects.find(
+    (project) => project.id === simulatorProjectId,
+  )
+
+  function selectMapProject(mapProject: { id: number }) {
+    const matchingProject = projects.find(
+      (project) => project.id === mapProject.id,
+    )
+
+    if (matchingProject) {
+      setSelectedProject(matchingProject)
+    }
+  }
+
+  function getProjectConflictsForRange(
+    candidateProject: Project,
+    allProjects: Project[],
+  ) {
+    return allProjects.filter(
+      (project) =>
+        project.id !== candidateProject.id &&
+        datesOverlap(candidateProject, project),
+    )
+  }
 
   function runSimulation() {
-    const drainage = projects.find(
-      (project) => project.id === 2,
+    if (!selectedSimulationProject) {
+      setSimulationMessage('Please select a valid project.')
+      return
+    }
+
+    if (!proposedStart || !proposedEnd) {
+      setSimulationMessage('Please select both start and end dates.')
+      return
+    }
+
+    if (proposedEnd < proposedStart) {
+      setSimulationMessage(
+        'The end date must be on or after the start date.',
+      )
+      return
+    }
+
+    const simulatedProject: Project = {
+      ...selectedSimulationProject,
+      startDate: proposedStart,
+      endDate: proposedEnd,
+    }
+
+    const simulatedConflicts = getProjectConflictsForRange(
+      simulatedProject,
+      projects,
     )
 
-    if (!drainage) return
+    if (simulatedConflicts.length === 0) {
+      setSimulationMessage(
+        'No scheduling conflicts detected for these dates.',
+      )
+      return
+    }
 
-    setProjects((current) =>
-      current.map((project) =>
-        project.id === 2
-          ? {
-              ...project,
-              start: '2026-10-22',
-              end: '2026-10-28',
-            }
-          : project,
-      ),
-    )
+    const conflictNames = simulatedConflicts
+      .map((project) => project.name)
+      .join(', ')
 
-    setSimulationRun(true)
-    setNotice(
-      'Demo schedule updated. Verify the dates and operational constraints before adopting any proposal.',
+    setSimulationMessage(
+      `Potential conflict with ${conflictNames}. Consider changing the dates.`,
     )
   }
 
-  function resetSimulation() {
-    setProjects(initialProjects)
-    setSimulationRun(false)
-    setNotice('')
+  function applySchedule() {
+    if (!selectedSimulationProject) {
+      setSimulationMessage('Please select a valid project.')
+      return
+    }
+
+    if (
+      !proposedStart ||
+      !proposedEnd ||
+      proposedEnd < proposedStart
+    ) {
+      setSimulationMessage('Please enter a valid date range.')
+      return
+    }
+
+    const updatedProject: Project = {
+      ...selectedSimulationProject,
+      startDate: proposedStart,
+      endDate: proposedEnd,
+    }
+
+    const conflictingProjects = getProjectConflictsForRange(
+      updatedProject,
+      projects,
+    )
+
+    if (conflictingProjects.length > 0) {
+      const conflictNames = conflictingProjects
+        .map((project) => project.name)
+        .join(', ')
+
+      setSimulationMessage(
+        `Cannot apply this schedule because it conflicts with ${conflictNames}.`,
+      )
+      return
+    }
+
+    const updatedProjects = projects.map((project) =>
+      project.id === simulatorProjectId
+        ? updatedProject
+        : project,
+    )
+
+    setProjects(updatedProjects)
+    setSimulationMessage(
+      'Schedule updated for this session. Review the conflict panel for changes.',
+    )
+    setSelectedProject(null)
+  }
+
+  function resetSchedule() {
+    setProjects([...initialProjects])
+    setSimulatorProjectId(2)
+    setProposedStart('2026-10-19')
+    setProposedEnd('2026-10-25')
+    setSimulationMessage('Demo schedule restored to its original state.')
+    setSelectedProject(null)
+  }
+
+  function renderProjectStatus(status: ProjectStatus) {
+    return (
+      <span
+        className={`project-status status-${status
+          .toLowerCase()
+          .replace(' ', '-')}`}
+      >
+        {status}
+      </span>
+    )
+  }
+
+  function renderConflictList() {
+    if (conflicts.length === 0) {
+      return (
+        <div className="empty-state">
+          <h3>No conflicts detected</h3>
+          <p>
+            No projects currently share a road during overlapping date ranges.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="conflict-list">
+        {conflicts.map(({ first, second }) => (
+          <article
+            className="conflict-card"
+            key={`${first.id}-${second.id}`}
+          >
+            <div className="conflict-card-heading">
+              <span className="conflict-symbol">⚠</span>
+              <div>
+                <h4>{first.road}</h4>
+                <p>Overlapping work on the same road</p>
+              </div>
+            </div>
+            <div className="conflict-project">
+              <strong>{first.name}</strong>
+              <span>
+                {formatDate(first.startDate)} – {formatDate(first.endDate)}
+              </span>
+            </div>
+            <div className="conflict-project">
+              <strong>{second.name}</strong>
+              <span>
+                {formatDate(second.startDate)} – {formatDate(second.endDate)}
+              </span>
+            </div>
+          </article>
+        ))}
+      </div>
+    )
   }
 
   return (
-    <div className="civic-app">
-      <header className="topbar">
-        <a
-          className="brand"
-          href="#dashboard"
-          onClick={() => setActiveNav('Dashboard')}
-        >
-          <span className="brand-mark">⌂</span>
-          <span>
-            Civic<span>Sync</span>
-          </span>
-        </a>
-
-        <span className="topbar-tag">PUBLIC WORKS INTELLIGENCE</span>
-
-        <div className="user-chip">
-          <span className="user-avatar">AD</span>
-          <span>
-            <b>Demo Admin</b>
-            <small>City Operations</small>
-          </span>
-        </div>
-      </header>
-
-      <section className="hero" id="dashboard">
-        <div className="hero-copy">
-          <span className="hero-kicker">
-            SMART CITIES · BETTER COORDINATION
-          </span>
-          <h1>
-            Smart Coordination.
-            <br />
-            <span>Fewer Diggings.</span>
-          </h1>
-          <p>
-            An intelligent platform to identify infrastructure conflicts,
-            coordinate public works, and bring transparency to citizens
-            before the work begins.
-          </p>
-          <div className="hero-pills">
-            <span>✓ Conflict detection</span>
-            <span>✓ Schedule planning</span>
-            <span>✓ Citizen transparency</span>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-icon">C</div>
+          <div>
+            <h1>CivicSync</h1>
+            <p>SMART CITY COORDINATION</p>
           </div>
         </div>
 
-        <div
-          className="hero-art"
-          aria-label="Illustration of a city skyline and road"
-        >
-          <div className="skyline">
-            <span>▥</span>
-            <span>▦</span>
-            <span>▤</span>
-            <span>▥</span>
-            <span>▦</span>
-            <span>▤</span>
-            <span>▥</span>
-          </div>
-          <div className="sun" />
-          <div className="road">
-            <div className="road-line" />
-          </div>
-          <div className="hero-quote">
-            Better planning today,
-            <br />
-            smoother cities tomorrow.
-          </div>
-        </div>
-      </section>
+        <div className="workspace-label">WORKSPACE</div>
 
-      <section className="feature-grid">
-        <Feature
-          icon="⌘"
-          title="Conflict Intelligence"
-          text="Detects location and schedule overlaps across departments."
-          tone="blue"
-        />
-        <Feature
-          icon="▦"
-          title="Schedule Simulator"
-          text="Compare timelines and suggest coordinated work windows."
-          tone="green"
-        />
-        <Feature
-          icon="⌖"
-          title="Disruption Insights"
-          text="Highlight projects that may affect daily travel."
-          tone="orange"
-        />
-        <Feature
-          icon="⬡"
-          title="Readiness Check"
-          text="Review dependencies and coordination steps."
-          tone="purple"
-        />
-        <Feature
-          icon="♧"
-          title="Citizen Transparency"
-          text="Make project status visible to residents."
-          tone="cyan"
-        />
-      </section>
-
-      <div className="workspace">
-        <aside className="sidebar">
-          <div className="sidebar-brand">
-            <span className="brand-mark">⌂</span>
-            CivicSync
-          </div>
-
-          <div className="side-label">WORKSPACE</div>
-
+        <nav className="sidebar-nav" aria-label="Main navigation">
           {navItems.map(([icon, label]) => (
             <button
+              type="button"
               key={label}
-              className={`nav-item ${
-                activeNav === label ? 'selected' : ''
-              }`}
+              className={`nav-item ${activeNav === label ? 'active' : ''}`}
               onClick={() => setActiveNav(label)}
             >
-              <span>{icon}</span>
-              {label}
+              <span className="nav-icon">{icon}</span>
+              <span>{label}</span>
+              {label === 'Conflicts' && conflicts.length > 0 && (
+                <span className="nav-count">{conflicts.length}</span>
+              )}
             </button>
           ))}
+        </nav>
 
-          <div className="sidebar-bottom">
-            <div className="mini-city">▥ ▦ ▥</div>
-            <b>
-              Smart Cities
-              <br />
-              Better Lives
-            </b>
-            <small>Prototype dashboard</small>
-          </div>
-        </aside>
-
-        <main className="dashboard">
-          <div className="dashboard-heading">
+        <div className="sidebar-bottom">
+          <div className="system-status">
+            <span className="status-dot" />
             <div>
-              <p className="overline">CITY OPERATIONS / OVERVIEW</p>
-              <h2>
-                {activeNav === 'Dashboard'
-                  ? 'Good morning, Admin'
-                  : activeNav}
-              </h2>
-              <p className="muted">
-                Here’s what’s happening with your city’s infrastructure today.
-              </p>
-            </div>
-
-            <div className="location-pill">
-              ⌖ &nbsp; Demo City <span>⌄</span>
+              <strong>System operational</strong>
+              <p>Prototype environment</p>
             </div>
           </div>
 
-          {notice && (
-            <div className="notice-banner">
-              <span>{notice}</span>
-              <button
-                aria-label="Dismiss notification"
-                onClick={() => setNotice('')}
-              >
-                ×
-              </button>
+          <div className="profile">
+            <div className="profile-avatar">CS</div>
+            <div>
+              <strong>City Administrator</strong>
+              <p>Demo workspace</p>
             </div>
-          )}
+          </div>
+        </div>
+      </aside>
 
-          <section className="metric-grid">
-            <Metric
-              icon="▰"
-              value={String(projects.length).padStart(2, '0')}
-              label="Total Projects"
-              note="Across departments"
-              tone="blue"
-            />
-            <Metric
-              icon="!"
-              value={String(conflicts.length).padStart(2, '0')}
-              label="Conflicts Detected"
-              note="Requires coordination"
-              tone="red"
-            />
-            <Metric
-              icon="⟳"
-              value={String(conflicts.length).padStart(2, '0')}
-              label="Repeat-Dig Risks"
-              note="Potential overlaps"
-              tone="amber"
-            />
-            <Metric
-              icon="♧"
-              value="12"
-              label="Citizen Reports"
-              note="Demo summary"
-              tone="green"
-            />
-          </section>
+      <main className="main-content">
+        <header className="topbar">
+          <div>
+            <p className="breadcrumb">CivicSync / {activeNav}</p>
+            <h2>{activeNav}</h2>
+          </div>
 
-          <section className="main-grid">
-            <div className="panel map-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Public Works Map</h3>
-                  <p>Interactive map · Fictional demo locations</p>
+          <div className="topbar-actions">
+            <span className="environment-tag">DEMO DATA</span>
+            <button
+              type="button"
+              className="notification-button"
+              aria-label="View conflicts"
+              onClick={() => setActiveNav('Conflicts')}
+            >
+              ♧
+              {conflicts.length > 0 && (
+                <span className="notification-dot" />
+              )}
+            </button>
+            <div className="topbar-avatar">CA</div>
+          </div>
+        </header>
+
+        {activeNav === 'Citizen Reports' ? (
+          <CitizenReports />
+        ) : (
+          <>
+            {activeNav === 'Dashboard' && (
+              <section className="welcome-banner">
+                <div className="welcome-copy">
+                  <p className="welcome-eyebrow">
+                    CITY INFRASTRUCTURE COORDINATION
+                  </p>
+                  <h2>Plan better. Build smarter.</h2>
+                  <p>
+                    Coordinate public works, identify scheduling conflicts,
+                    and improve visibility across city infrastructure projects.
+                  </p>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => setActiveNav('Schedule Simulator')}
+                  >
+                    Open Schedule Simulator <span>→</span>
+                  </button>
                 </div>
-                <span className="live-dot">● MAP</span>
-              </div>
 
-              <div className="map-toolbar">
-                <input
-                  aria-label="Search projects"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search road or project..."
+                <div className="city-illustration" aria-hidden="true">
+                  <div className="city-sun" />
+                  <div className="city-building building-one">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="city-building building-two">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="city-building building-three">
+                    <span />
+                    <span />
+                  </div>
+                  <div className="city-road">
+                    <span />
+                  </div>
+                  <div className="city-tree tree-one">♣</div>
+                  <div className="city-tree tree-two">♣</div>
+                </div>
+              </section>
+            )}
+
+            {activeNav === 'Dashboard' && (
+              <section className="metric-grid">
+                <article className="metric-card">
+                  <div className="metric-top">
+                    <span>Total projects</span>
+                    <span className="metric-icon blue">▤</span>
+                  </div>
+                  <strong>{projects.length}</strong>
+                  <p>Tracked infrastructure projects</p>
+                </article>
+
+                <article className="metric-card">
+                  <div className="metric-top">
+                    <span>Active projects</span>
+                    <span className="metric-icon green">↗</span>
+                  </div>
+                  <strong>{ongoingCount}</strong>
+                  <p>Currently in progress</p>
+                </article>
+
+                <article className="metric-card">
+                  <div className="metric-top">
+                    <span>Scheduling conflicts</span>
+                    <span className="metric-icon red">⚠</span>
+                  </div>
+                  <strong>{conflicts.length}</strong>
+                  <p>Potential date and location overlaps</p>
+                </article>
+
+                <article className="metric-card">
+                  <div className="metric-top">
+                    <span>Planned projects</span>
+                    <span className="metric-icon purple">◷</span>
+                  </div>
+                  <strong>{plannedCount}</strong>
+                  <p>{completedCount} completed</p>
+                </article>
+              </section>
+            )}
+
+            {(activeNav === 'Dashboard' ||
+              activeNav === 'Public Works Map') && (
+              <section className="panel map-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Public Works Overview</h3>
+                    <p>
+                      Select a marker to inspect a sample infrastructure
+                      project.
+                    </p>
+                  </div>
+                  {activeNav === 'Dashboard' && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setActiveNav('Public Works Map')}
+                    >
+                      Expand map →
+                    </button>
+                  )}
+                </div>
+
+                <ProjectMap
+                  projects={mapProjects}
+                  onSelect={selectMapProject}
                 />
 
-                <select
-                  aria-label="Filter project category"
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                >
-                  <option value="All">All</option>
-                  <option value="Water">Water</option>
-                  <option value="Drainage">Drainage</option>
-                  <option value="Telecom">Telecom</option>
-                  <option value="Road">Road</option>
-                </select>
-              </div>
-
-              <p className="map-demo-note">
-                Sample coordinates only. These are not verified public works
-                locations.
-              </p>
-
-              <ProjectMap
-                projects={filteredProjects}
-                onSelect={(project) =>
-                  setNotice(
-                    `${project.name} — ${project.road}. Sample dates: ${project.start} to ${project.end}.`,
-                  )
-                }
-              />
-            </div>
-
-            <div className="panel conflicts-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Top Conflicts</h3>
-                  <p>Potential scheduling overlaps</p>
-                </div>
-                <span className="count-badge">{conflicts.length}</span>
-              </div>
-
-              {conflicts.length > 0 ? (
-                conflicts.slice(0, 5).map(({ first, second }) => (
-                  <div
-                    className="conflict-row"
-                    key={`${first.id}-${second.id}`}
-                  >
-                    <span className="conflict-symbol">!</span>
-                    <div className="conflict-text">
-                      <b>{first.road}</b>
-                      <p>
-                        {first.name} + {second.name}
-                      </p>
-                      <small>
-                        {shortDate(first.start)} – {shortDate(first.end)}
-                        {' / '}
-                        {shortDate(second.start)} – {shortDate(second.end)}
-                      </small>
-                    </div>
-                    <span className="severity">Review</span>
+                {selectedProject && (
+                  <div className="selected-project-detail">
+                    <h4>{selectedProject.name}</h4>
+                    <p>
+                      {selectedProject.road} · {selectedProject.department}
+                    </p>
+                    <p>
+                      {formatDate(selectedProject.startDate)} –{' '}
+                      {formatDate(selectedProject.endDate)}
+                    </p>
+                    {renderProjectStatus(selectedProject.status)}
                   </div>
-                ))
-              ) : (
-                <div className="empty-small">
-                  No overlaps detected with the current sample schedule.
-                </div>
-              )}
+                )}
 
-              <p className="panel-footnote">
-                A flagged overlap needs human review; it does not prove
-                duplicate excavation.
-              </p>
-            </div>
-
-            <div className="panel activity-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Recent Activities</h3>
-                  <p>Illustrative activity feed</p>
-                </div>
-                <span className="activity-count">5</span>
-              </div>
-
-              <Activity
-                icon="✓"
-                title="Conflict review created"
-                detail="Main Road · Water + Drainage"
-                time="2 hours ago"
-                tone="green"
-              />
-              <Activity
-                icon="♧"
-                title="Citizen report received"
-                detail="Road damage report · Demo"
-                time="4 hours ago"
-                tone="blue"
-              />
-              <Activity
-                icon="▤"
-                title="Project schedule updated"
-                detail="Road resurfacing · Demo"
-                time="6 hours ago"
-                tone="purple"
-              />
-              <Activity
-                icon="◷"
-                title="Schedule proposal created"
-                detail="Main Road · Coordination"
-                time="8 hours ago"
-                tone="cyan"
-              />
-              <Activity
-                icon="✓"
-                title="Review note recorded"
-                detail="Drainage work · Demo"
-                time="10 hours ago"
-                tone="green"
-              />
-            </div>
-
-            <div className="panel details-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Conflict Details</h3>
-                  <p>Example flagged road segment</p>
-                </div>
-                <span className="priority">Needs review</span>
-              </div>
-
-              <div className="detail-road">⌖ &nbsp; Main Road</div>
-
-              <div className="detail-item">
-                <span className="detail-dot water-dot" />
-                <div>
-                  <b>Water Pipeline Replacement</b>
-                  <p>
-                    {shortDate('2026-10-12')} – {shortDate('2026-10-18')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="detail-item">
-                <span className="detail-dot drain-dot" />
-                <div>
-                  <b>Drainage System Upgrade</b>
-                  <p>
-                    {shortDate(
-                      simulationRun ? '2026-10-22' : '2026-10-15',
-                    )}{' '}
-                    –{' '}
-                    {shortDate(
-                      simulationRun ? '2026-10-28' : '2026-10-21',
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="review-callout">
-                ⚠ Verify exact work locations, permits, and on-site schedules
-                before confirming a conflict.
-              </div>
-            </div>
-
-            <div className="panel timeline-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Timeline Comparison</h3>
-                  <p>Planned work windows</p>
-                </div>
-                <span className="timeline-key">
-                  <i /> Original <i /> Proposed
-                </span>
-              </div>
-
-              <Timeline label="Water" start={1} width={34} tone="blue" />
-              <Timeline
-                label="Drainage"
-                start={24}
-                width={38}
-                tone="green"
-              />
-
-              <div className="timeline-divider">
-                <span>
-                  {simulationRun ? 'PROPOSED WINDOW' : 'OVERLAPPING PERIOD'}
-                </span>
-              </div>
-
-              <Timeline label="Water" start={1} width={34} tone="blue" />
-              <Timeline
-                label="Drainage"
-                start={simulationRun ? 45 : 24}
-                width={38}
-                tone="green"
-              />
-
-              <div
-                className={`timeline-result ${
-                  simulationRun ? 'success' : ''
-                }`}
-              >
-                {simulationRun
-                  ? '✓ Demo dates adjusted — verify feasibility'
-                  : '⚠ Overlap detected — consider a coordinated schedule'}
-              </div>
-            </div>
-
-            <div className="panel simulator-panel">
-              <div className="panel-heading">
-                <div>
-                  <h3>Schedule Simulator</h3>
-                  <p>Test a proposed work window</p>
-                </div>
-                <span className="sim-icon">⟳</span>
-              </div>
-
-              <div className="sim-project">
-                <span className="sim-dot water-dot" />
-                <div>
-                  <b>Water Pipeline</b>
-                  <small>Main Road</small>
-                </div>
-                <span>
-                  {shortDate('2026-10-12')} – {shortDate('2026-10-18')}
-                </span>
-              </div>
-
-              <div className="sim-project">
-                <span className="sim-dot drain-dot" />
-                <div>
-                  <b>Drainage Upgrade</b>
-                  <small>Main Road</small>
-                </div>
-                <span>
-                  {shortDate(
-                    simulationRun ? '2026-10-22' : '2026-10-15',
-                  )}{' '}
-                  –{' '}
-                  {shortDate(
-                    simulationRun ? '2026-10-28' : '2026-10-21',
-                  )}
-                </span>
-              </div>
-
-              <button
-                className="primary-button"
-                onClick={simulationRun ? resetSimulation : runSimulation}
-              >
-                {simulationRun
-                  ? '↺ Reset Demo Schedule'
-                  : '⟳ Run Schedule Simulation'}
-              </button>
-
-              <div
-                className={`simulation-result ${
-                  simulationRun ? 'success' : ''
-                }`}
-              >
-                <b>
-                  {simulationRun
-                    ? 'Demo schedule adjusted'
-                    : 'Simulation ready'}
-                </b>
-                <p>
-                  {simulationRun
-                    ? 'The sample dates were moved to remove the detected overlap. Verify operational constraints before adopting any schedule.'
-                    : 'Run the demo to move drainage work after the water project.'}
+                <p className="demo-disclaimer">
+                  Map locations are illustrative demo data, not verified
+                  municipal coordinates.
                 </p>
-              </div>
-            </div>
-          </section>
+              </section>
+            )}
 
-          <section className="bottom-grid">
-            <div className="bottom-card impact-card">
-              <span className="bottom-icon">⌂</span>
-              <div>
-                <h3>Real-World Impact</h3>
-                <p>Less repeat excavation</p>
-                <p>Better coordination</p>
-                <p>More transparent projects</p>
-              </div>
-            </div>
+            {activeNav === 'Dashboard' && (
+              <section className="panel conflict-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Conflict Detection</h3>
+                    <p>Potential scheduling overlaps</p>
+                  </div>
+                  <span className="conflict-badge">
+                    {conflicts.length} detected
+                  </span>
+                </div>
 
-            <div className="bottom-card">
-              <h3>Technology Stack</h3>
-              <div className="tech-list">
-                <span>⚛ React + Vite</span>
-                <span>TS TypeScript</span>
-                <span>▤ Conflict logic</span>
-                <span>⌖ OpenStreetMap</span>
-              </div>
-              <p className="muted">
-                Current prototype uses local demo data.
-              </p>
-            </div>
+                {renderConflictList()}
 
-            <div className="bottom-card">
-              <h3>Project Workflow</h3>
-              <div className="workflow">
-                <span>Collect<br />projects</span>
-                <b>→</b>
-                <span>Detect<br />conflicts</span>
-                <b>→</b>
-                <span>Propose<br />schedule</span>
-                <b>→</b>
-                <span>Review<br />&amp; report</span>
-              </div>
-              <div className="workflow-banner">
-                CivicSync — Coordinated today. A better tomorrow.
-              </div>
-            </div>
-          </section>
+                <button
+                  type="button"
+                  className="secondary-button full-width-button"
+                  onClick={() => setActiveNav('Conflicts')}
+                >
+                  View all conflicts →
+                </button>
+              </section>
+            )}
 
-          <footer className="dashboard-footer">
-            <span>CivicSync · CivicTech Prototype</span>
-            <span>
-              Demo data only · Potential conflicts require verification
-            </span>
-          </footer>
-        </main>
-      </div>
-    </div>
-  )
-}
+            {activeNav === 'Conflicts' && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Scheduling Conflicts</h3>
+                    <p>
+                      Projects on the same road with overlapping date ranges.
+                    </p>
+                  </div>
+                  <span className="conflict-badge">
+                    {conflicts.length} detected
+                  </span>
+                </div>
+                {renderConflictList()}
+              </section>
+            )}
 
-function Feature({
-  icon,
-  title,
-  text,
-  tone,
-}: {
-  icon: string
-  title: string
-  text: string
-  tone: string
-}) {
-  return (
-    <article className="feature-card">
-      <span className={`feature-icon ${tone}`}>{icon}</span>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
-  )
-}
+            {activeNav === 'Projects' && (
+              <section className="panel projects-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Infrastructure Projects</h3>
+                    <p>All projects tracked in this prototype.</p>
+                  </div>
+                  <span className="environment-tag">
+                    {projects.length} PROJECTS
+                  </span>
+                </div>
 
-function Metric({
-  icon,
-  value,
-  label,
-  note,
-  tone,
-}: {
-  icon: string
-  value: string
-  label: string
-  note: string
-  tone: string
-}) {
-  return (
-    <article className="metric-card">
-      <span className={`metric-icon ${tone}`}>{icon}</span>
-      <div>
-        <strong>{value}</strong>
-        <b>{label}</b>
-        <small>{note}</small>
-      </div>
-    </article>
-  )
-}
+                <div className="project-table-wrap">
+                  <table className="project-table">
+                    <thead>
+                      <tr>
+                        <th>Project</th>
+                        <th>Department</th>
+                        <th>Location</th>
+                        <th>Start date</th>
+                        <th>End date</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projects.map((project) => (
+                        <tr key={project.id}>
+                          <td>
+                            <strong>{project.name}</strong>
+                            <small>{project.category}</small>
+                          </td>
+                          <td>{project.department}</td>
+                          <td>{project.road}</td>
+                          <td>{formatDate(project.startDate)}</td>
+                          <td>{formatDate(project.endDate)}</td>
+                          <td>{renderProjectStatus(project.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
-function Activity({
-  icon,
-  title,
-  detail,
-  time,
-  tone,
-}: {
-  icon: string
-  title: string
-  detail: string
-  time: string
-  tone: string
-}) {
-  return (
-    <div className="activity-row">
-      <span className={`activity-icon ${tone}`}>{icon}</span>
-      <div>
-        <b>{title}</b>
-        <p>{detail}</p>
-        <small>{time}</small>
-      </div>
-    </div>
-  )
-}
+            {activeNav === 'Schedule Simulator' && (
+              <section className="panel simulator-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Schedule Simulator</h3>
+                    <p>
+                      Test a proposed schedule before applying it to a project.
+                    </p>
+                  </div>
+                  <span className="environment-tag">WHAT-IF ANALYSIS</span>
+                </div>
 
-function Timeline({
-  label,
-  start,
-  width,
-  tone,
-}: {
-  label: string
-  start: number
-  width: number
-  tone: string
-}) {
-  return (
-    <div className="timeline-row">
-      <span className="timeline-label">{label}</span>
-      <div className="timeline-track">
-        <div
-          className={`timeline-bar ${tone}`}
-          style={{ left: `${start}%`, width: `${width}%` }}
-        />
-      </div>
+                <div className="simulator-form">
+                  <div className="simulator-field">
+                    <label htmlFor="sim-project">Project</label>
+                    <select
+                      id="sim-project"
+                      value={simulatorProjectId}
+                      onChange={(event) => {
+                        const nextId = Number(event.target.value)
+                        const nextProject = projects.find(
+                          (project) => project.id === nextId,
+                        )
+
+                        setSimulatorProjectId(nextId)
+
+                        if (nextProject) {
+                          setProposedStart(nextProject.startDate)
+                          setProposedEnd(nextProject.endDate)
+                        }
+
+                        setSimulationMessage('')
+                      }}
+                    >
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="simulator-field">
+                    <label htmlFor="sim-start">Proposed start date</label>
+                    <input
+                      id="sim-start"
+                      type="date"
+                      value={proposedStart}
+                      onChange={(event) => {
+                        setProposedStart(event.target.value)
+                        setSimulationMessage('')
+                      }}
+                    />
+                  </div>
+
+                  <div className="simulator-field">
+                    <label htmlFor="sim-end">Proposed end date</label>
+                    <input
+                      id="sim-end"
+                      type="date"
+                      value={proposedEnd}
+                      onChange={(event) => {
+                        setProposedEnd(event.target.value)
+                        setSimulationMessage('')
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {selectedSimulationProject && (
+                  <div className="current-schedule">
+                    <span>Current schedule</span>
+                    <strong>
+                      {formatDate(selectedSimulationProject.startDate)} –{' '}
+                      {formatDate(selectedSimulationProject.endDate)}
+                    </strong>
+                  </div>
+                )}
+
+                <div className="simulator-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={runSimulation}
+                  >
+                    Check for Conflicts
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={applySchedule}
+                  >
+                    Apply Schedule
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={resetSchedule}
+                  >
+                    Reset Demo
+                  </button>
+                </div>
+
+                {simulationMessage && (
+                  <div className="simulation-result" role="status">
+                    <strong>Simulation result</strong>
+                    <p>{simulationMessage}</p>
+                  </div>
+                )}
+
+                <p className="demo-disclaimer">
+                  Schedule changes remain in application memory and reset when
+                  the page is refreshed.
+                </p>
+              </section>
+            )}
+
+            {activeNav === 'Audit Trail' && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Audit Trail</h3>
+                    <p>Prototype activity information.</p>
+                  </div>
+                </div>
+                <div className="activity-list">
+                  <article className="activity-item">
+                    <span className="activity-dot green-dot" />
+                    <div>
+                      <strong>Dashboard initialised</strong>
+                      <p>Demo infrastructure data loaded.</p>
+                    </div>
+                    <span>Demo</span>
+                  </article>
+                  <article className="activity-item">
+                    <span className="activity-dot blue-dot" />
+                    <div>
+                      <strong>Conflict analysis enabled</strong>
+                      <p>
+                        Same-road projects are checked for overlapping dates.
+                      </p>
+                    </div>
+                    <span>Available</span>
+                  </article>
+                  <article className="activity-item">
+                    <span className="activity-dot orange-dot" />
+                    <div>
+                      <strong>Citizen reporting module</strong>
+                      <p>Reports are stored in this browser.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setActiveNav('Citizen Reports')}
+                    >
+                      Open reports →
+                    </button>
+                  </article>
+                </div>
+                <p className="demo-disclaimer">
+                  This is a demonstration feed, not a permanent server-side
+                  audit log.
+                </p>
+              </section>
+            )}
+
+            {activeNav === 'Settings' && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Settings</h3>
+                    <p>Prototype environment information.</p>
+                  </div>
+                </div>
+                <div className="settings-list">
+                  <div>
+                    <strong>Application</strong>
+                    <span>CivicSync</span>
+                  </div>
+                  <div>
+                    <strong>Environment</strong>
+                    <span>Local demonstration</span>
+                  </div>
+                  <div>
+                    <strong>Project data</strong>
+                    <span>Stored in application state</span>
+                  </div>
+                  <div>
+                    <strong>Citizen reports</strong>
+                    <span>Stored in browser local storage</span>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {activeNav === 'Dashboard' && (
+              <>
+                <section className="panel projects-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h3>Recent Projects</h3>
+                      <p>Infrastructure work across departments.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setActiveNav('Projects')}
+                    >
+                      View all →
+                    </button>
+                  </div>
+
+                  <div className="project-table-wrap">
+                    <table className="project-table">
+                      <thead>
+                        <tr>
+                          <th>Project</th>
+                          <th>Department</th>
+                          <th>Location</th>
+                          <th>End date</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projects.slice(0, 5).map((project) => (
+                          <tr key={project.id}>
+                            <td>
+                              <strong>{project.name}</strong>
+                              <small>{project.category}</small>
+                            </td>
+                            <td>{project.department}</td>
+                            <td>{project.road}</td>
+                            <td>{formatDate(project.endDate)}</td>
+                            <td>{renderProjectStatus(project.status)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className="bottom-grid">
+                  <article className="info-card">
+                    <div className="info-card-icon">↔</div>
+                    <div>
+                      <h3>Cross-department coordination</h3>
+                      <p>
+                        Identify overlapping work before multiple teams occupy
+                        the same road.
+                      </p>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setActiveNav('Conflicts')}
+                      >
+                        Review conflicts →
+                      </button>
+                    </div>
+                  </article>
+
+                  <article className="info-card">
+                    <div className="info-card-icon">♧</div>
+                    <div>
+                      <h3>Citizen participation</h3>
+                      <p>
+                        Submit infrastructure complaints and track their
+                        progress.
+                      </p>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setActiveNav('Citizen Reports')}
+                      >
+                        Open citizen reports →
+                      </button>
+                    </div>
+                  </article>
+                </section>
+              </>
+            )}
+          </>
+        )}
+
+        <footer className="app-footer">
+          <span>CivicSync · Smart City Coordination</span>
+          <span>Hackathon prototype · Demo data only</span>
+        </footer>
+      </main>
     </div>
   )
 }

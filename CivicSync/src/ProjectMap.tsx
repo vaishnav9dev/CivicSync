@@ -1,5 +1,12 @@
 
-import { CircleMarker, MapContainer, Popup, TileLayer } from 'react-leaflet'
+import { useState } from 'react'
+import {
+  CircleMarker,
+  MapContainer,
+  Popup,
+  TileLayer,
+} from 'react-leaflet'
+import type { LatLngExpression } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './ProjectMap.css'
 
@@ -18,8 +25,8 @@ type ProjectMapProps = {
   onSelect: (project: MapProject) => void
 }
 
-// Fictional demo positions around Bengaluru.
-// These coordinates do not represent verified public works.
+// Fictional demo coordinates near Bengaluru.
+// These do not represent verified infrastructure work sites.
 const demoCoordinates: Record<number, [number, number]> = {
   1: [12.9716, 77.5946],
   2: [12.9742, 77.5990],
@@ -37,12 +44,27 @@ const categoryColors: Record<string, string> = {
 }
 
 function ProjectMap({ projects, onSelect }: ProjectMapProps) {
+  const [selectedProject, setSelectedProject] =
+    useState<MapProject | null>(null)
+
+  const selectedPosition = selectedProject
+    ? demoCoordinates[selectedProject.id]
+    : undefined
+
+  const mapCenter: LatLngExpression = [12.973, 77.595]
+
+  function selectProject(project: MapProject) {
+    setSelectedProject(project)
+    onSelect(project)
+  }
+
   return (
     <MapContainer
       className="real-map"
-      center={[12.973, 77.595]}
+      center={mapCenter}
       zoom={13}
-      scrollWheelZoom
+      scrollWheelZoom={true}
+      closePopupOnClick={false}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -51,15 +73,17 @@ function ProjectMap({ projects, onSelect }: ProjectMapProps) {
 
       {projects.map((project) => {
         const position = demoCoordinates[project.id]
+
         if (!position) return null
 
-        const color = categoryColors[project.category] ?? '#0899b6'
+        const color =
+          categoryColors[project.category] ?? '#0899b6'
 
         return (
           <CircleMarker
             key={project.id}
             center={position}
-            radius={9}
+            radius={10}
             pathOptions={{
               color: '#ffffff',
               weight: 3,
@@ -67,21 +91,50 @@ function ProjectMap({ projects, onSelect }: ProjectMapProps) {
               fillOpacity: 1,
             }}
             eventHandlers={{
-              click: () => onSelect(project),
+              click: () => selectProject(project),
             }}
-          >
-            <Popup>
-              <div className="map-popup">
-                <strong>{project.name}</strong>
-                <p>Road: {project.road}</p>
-                <p>Department: {project.department}</p>
-                <p>Dates: {project.start} to {project.end}</p>
-                <small>Fictional demonstration project</small>
-              </div>
-            </Popup>
-          </CircleMarker>
+          />
         )
       })}
+
+      {selectedProject && selectedPosition && (
+        <Popup
+          key={selectedProject.id}
+          position={selectedPosition}
+          eventHandlers={{
+            remove: () => setSelectedProject(null),
+          }}
+        >
+          <div className="map-popup">
+            <span className="popup-category">
+              {selectedProject.category} PROJECT
+            </span>
+
+            <h3>{selectedProject.name}</h3>
+
+            <p>
+              <strong>Road:</strong> {selectedProject.road}
+            </p>
+
+            <p>
+              <strong>Department:</strong>{' '}
+              {selectedProject.department}
+            </p>
+
+            <p>
+              <strong>Start:</strong> {selectedProject.start}
+            </p>
+
+            <p>
+              <strong>End:</strong> {selectedProject.end}
+            </p>
+
+            <span className="popup-disclaimer">
+              Fictional demonstration project
+            </span>
+          </div>
+        </Popup>
+      )}
     </MapContainer>
   )
 }
