@@ -1,184 +1,140 @@
 # CivicSync 🏙️
-### Plan Together. Build Smarter. Create Better Cities.
 
-**CivicSync is a civic-tech platform designed to help municipalities coordinate public infrastructure projects, identify scheduling conflicts, and reduce avoidable disruption to urban communities.**
+### Smarter Coordination for Civic Infrastructure Projects
 
-When multiple departments work on the same road or in the same area, poor coordination can lead to overlapping construction schedules, repeated roadwork, wasted resources, and unnecessary inconvenience for citizens.
+CivicSync is a civic technology web application designed to help improve the coordination and planning of public infrastructure projects. It focuses on identifying scheduling conflicts between projects that share roads or other infrastructure, helping teams explore alternative schedules and reduce disruption.
 
-CivicSync aims to bring infrastructure projects into one shared view, helping decision-makers identify conflicts and explore better schedules before work begins.
+By bringing project information and scheduling considerations into one interface, CivicSync aims to support more efficient, transparent, and coordinated infrastructure planning.
 
----
+## 🌐 Project Links
 
-## 💡 The Problem
+- **Live Demo (Production):** https://civicsync-gold.vercel.app/
+- **Additional Deployment:** https://civicsync-2a786kjah-vaishnav9dev.vercel.app/
+- **GitHub Repository:** https://github.com/vaishnav9dev/CivicSync
 
-Modern cities depend on multiple public departments to maintain roads, drainage systems, water pipelines, electricity networks, and telecommunications infrastructure.
+> **Note:** The additional deployment URL may require Vercel authentication. Use the production link for public demonstrations.
 
-However, when these projects are planned independently, conflicts can arise:
+## 🎯 Problem Statement
 
-- 🚧 Multiple projects scheduled on the same road.
-- 🔄 Repeated excavation because departments lack coordination.
-- 🚦 Traffic disruption and inconvenience for residents.
-- 💸 Inefficient use of public funds and resources.
-- 📅 Difficulty identifying scheduling conflicts before construction begins.
+Urban infrastructure projects such as road repairs, utility maintenance, and public works can overlap in location and time. Poor coordination can result in repeated road closures, traffic disruption, inefficient resource utilization, and unnecessary inconvenience for the public.
 
-**The core challenge:** How can cities coordinate infrastructure work more effectively when multiple projects share roads, locations, and timelines?
+Project teams need a better way to visualize planned work, identify overlapping schedules, and consider alternative timelines before projects are carried out.
 
-## 🚀 Our Solution
+## 💡 Our Solution
 
-CivicSync provides a centralised view of public infrastructure projects and their schedules.
+CivicSync aims to make infrastructure planning more coordinated by bringing project scheduling and conflict identification into a unified web interface.
 
-By visualising project locations, comparing timelines, and identifying overlapping work, CivicSync aims to help municipal teams make more informed planning decisions.
+The project explores how digital tools and map-based visualization can help teams understand where infrastructure projects may conflict and evaluate alternative schedules.
 
-### What makes CivicSync useful?
+## ✨ Key Objectives
 
-- **See the bigger picture:** Bring infrastructure projects into a shared dashboard.
-- **Detect conflicts early:** Identify projects that overlap on the same road during the same period.
-- **Explore alternative schedules:** Simulate schedule changes and examine whether they reduce conflicts.
-- **Understand project locations:** Use a map-based view to explore where infrastructure work is planned.
-- **Support proactive coordination:** Help decision-makers spot potential issues before they become costly disruptions.
+- **Infrastructure Coordination:** Organize information about public infrastructure projects.
+- **Schedule Conflict Detection:** Identify potential overlaps between projects that share roads or locations.
+- **Alternative Schedule Exploration:** Help users consider different project timelines to reduce conflicts.
+- **Map-Based Visualization:** Use geographical context to make infrastructure planning easier to understand.
+- **Improved Decision-Making:** Support more informed coordination between project teams.
 
----
-
-## ✨ Key Features
-
-| Feature | Purpose |
-|---|---|
-| 📊 Infrastructure Dashboard | View project summaries and key statistics |
-| 🗺️ Interactive Map | Visualise project locations geographically |
-| 🔎 Search & Filtering | Find projects using available project attributes |
-| ⚠️ Conflict Detection | Identify overlapping project schedules on shared roads |
-| 📅 Schedule Simulation | Explore proposed date changes and their effect on conflicts |
-| 📈 Timeline Comparison | Understand when different projects overlap |
-
-*The application is under active development. Some current functionality uses illustrative demonstration data and frontend simulation. Feature availability will evolve as the project progresses.*
-
----
-
-## 🧠 How It Works
-
-The intended workflow is straightforward:
-
-**01 — View Projects**
-
-Explore infrastructure projects and their locations, categories, and schedules.
-
-**02 — Identify Conflicts**
-
-Compare projects that share a road or location and determine whether their scheduled dates overlap.
-
-**03 — Explore Alternatives**
-
-Simulate a change to a project's schedule and check whether the proposed dates resolve the conflict.
-
-**04 — Support Better Planning**
-
-Use the resulting project and timeline views to inform coordination decisions.
-
----
+*The objectives above describe the project's intended capabilities; refer to the live application for the features currently implemented.*
 
 ## 🛠️ Technology Stack
 
-| Technology | Role |
+| Technology | Purpose |
 |---|---|
-| React | Component-based user interface |
-| TypeScript | Type-safe frontend development |
-| Vite | Development server and build tooling |
-| Leaflet | Interactive maps |
-| React Leaflet | React integration for map components |
-| CSS | Layout, styling, and responsive presentation |
+| React | Frontend user interface |
+| TypeScript | Type-safe application development |
+| Vite | Frontend development and build tooling |
+| React Leaflet | Map-based visualization |
+| Supabase | Backend service integration and configuration |
+| Git & GitHub | Version control and team collaboration |
+| Vercel | Web application deployment |
 
-Backend services, persistent storage, and additional integrations will be documented as they are implemented.
+## 🏗️ Architecture Overview
 
----
+CivicSync follows a web application architecture:
 
-## 🖥️ Getting Started
+1. **Frontend:** React and TypeScript provide the user interface.
+2. **Map Visualization:** React Leaflet supports geographical presentation.
+3. **Backend Integration:** Supabase configuration supports connected backend services.
+4. **Deployment:** Vercel hosts the web application.
+
+## 🚀 Run Locally
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/)
-- npm
+- Node.js and npm
 - Git
+- Access to the required Supabase project configuration
 
 ### 1. Clone the repository
 
 ```bash
 git clone https://github.com/vaishnav9dev/CivicSync.git
-cd CivicSync/CivicSync
+cd CivicSync
 ```
 
 ### 2. Install dependencies
 
+Navigate to the directory containing the frontend `package.json`. In the current repository structure, this is the nested `CivicSync` directory:
+
 ```bash
+cd CivicSync
 npm install
 ```
 
-### 3. Start the development server
+### 3. Configure environment variables
+
+Create a `.env.local` file in the frontend project directory and configure the required variables:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
+
+Use your own Supabase project values. Never commit private credentials or service-role keys to GitHub.
+
+### 4. Start the development server
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed in your terminal.
+Open the local URL printed in your terminal by Vite.
 
-### 4. Build for production
+### 5. Create a production build
 
 ```bash
 npm run build
 ```
 
-This runs the configured frontend production build.
+This runs the configured TypeScript build and Vite production build.
 
----
+> If you need to start the backend separately, follow the instructions and scripts provided in the relevant backend directory.
 
-## 🌍 Our Vision
+## 🔒 Security and Configuration
 
-We envision cities where infrastructure departments can plan together instead of operating in isolation.
+- Keep environment-specific configuration out of committed `.env.local` files.
+- Use Vercel environment variables for deployed builds.
+- Apply appropriate access controls to backend services and database operations.
+- Never expose Supabase service-role keys or other privileged secrets in frontend code.
 
-CivicSync aims to make public infrastructure coordination more visible, proactive, and data-informed—helping communities benefit from better-planned construction and more efficient use of public resources.
+## 🔮 Future Scope
 
-### 🔮 Potential Future Enhancements
+- More advanced detection of overlapping infrastructure schedules.
+- Improved alternative-schedule recommendations.
+- Enhanced geographical visualization of planned work.
+- Better coordination workflows for multiple project teams.
+- Reporting and analytics to support infrastructure planning.
 
-- Persistent project storage and project-management APIs.
-- Department-specific access and coordination workflows.
-- Verified geographic and infrastructure datasets.
-- More advanced scheduling recommendations.
-- Conflict analytics and reporting.
-- Citizen-facing project visibility and updates.
+## 👥 Team and Acknowledgements
 
-These are potential future enhancements, not claims about currently implemented features.
+Developed collaboratively for a web development hackathon at IIITDM Kancheepuram.
 
----
-
-## 🎯 Project Focus
-
-CivicSync is being developed as a civic-technology project for a web development hackathon at **IIITDM Kancheepuram**.
-
-Our focus is to demonstrate how a shared view of infrastructure projects and their schedules can help identify potential conflicts and improve coordination.
-
-## 🤝 Contributing
-
-We welcome collaborative development.
-
-1. Fork the repository or create a feature branch.
-2. Make a focused change.
-3. Test the application and production build.
-4. Submit a pull request describing the change.
-
-Please coordinate with the team before making changes to shared components.
-
----
-
-## 👥 Team
-
-Built collaboratively by students at **IIITDM Kancheepuram**.
+We thank the organizers, mentors, and everyone who contributed feedback during development.
 
 ## 📄 License
 
-A license has not yet been specified. Licensing details will be added when the project team selects one.
+No license has been specified yet. Please add an appropriate license if you intend to permit public reuse or modification.
 
 ---
 
-<p align="center">
-  <strong>CivicSync</strong><br/>
-  Better coordination. Smarter infrastructure. Stronger communities.
-</p>
+**CivicSync — Better coordination. Smarter infrastructure. More connected cities.**
